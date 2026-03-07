@@ -24,104 +24,57 @@ import time
 from datetime import datetime, timezone
 
 import httpx
+import searoute as sr
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ── High-fidelity ocean routes — every waypoint is verified at-sea ──────────
 # ══════════════════════════════════════════════════════════════════════════════
 
-ROUTES = {
+ROUTES_DEFS = {
     "dubai_rotterdam": {
         "origin": "Dubai (Jebel Ali)", "destination": "Rotterdam",
-        "waypoints": [
-            # Jebel Ali → Strait of Hormuz → Gulf of Oman → Arabian Sea
-            (25.02, 55.06), (25.30, 55.50), (25.95, 56.25), (26.30, 56.40),
-            (25.40, 57.80), (24.50, 58.80), (23.00, 60.00), (21.00, 61.50),
-            # Arabian Sea → Gulf of Aden
-            (18.00, 58.00), (14.50, 52.00), (12.50, 50.00), (12.00, 48.00),
-            # Bab el-Mandeb → Red Sea
-            (12.60, 43.50), (13.50, 42.80), (14.50, 42.00), (16.00, 41.00),
-            (18.00, 39.50), (21.00, 38.00), (24.00, 37.00), (27.50, 34.50),
-            # Suez Canal → Mediterranean
-            (29.95, 32.58), (31.20, 32.30), (31.80, 30.50),
-            (33.60, 28.50), (35.00, 24.00), (35.50, 18.00),
-            # Mediterranean → Strait of Gibraltar → Atlantic
-            (36.00, 12.00), (36.50, 5.00), (35.90, -5.70), (36.10, -7.50),
-            # Atlantic → English Channel → Rotterdam
-            (38.00, -9.50), (43.00, -10.00), (47.00, -7.00), (48.70, -5.40),
-            (49.50, -3.50), (50.30, -1.00), (51.20, 1.80), (51.90, 4.00),
-        ],
+        "start": [55.06, 25.02], "end": [4.00, 51.90]
     },
     "mumbai_singapore": {
         "origin": "Mumbai (JNPT)", "destination": "Singapore",
-        "waypoints": [
-            # Mumbai → Arabian Sea → Indian Ocean (south of Sri Lanka)
-            (18.94, 72.84), (18.20, 72.00), (17.00, 72.00), (15.00, 73.00),
-            (12.00, 75.00), (9.00, 76.50), (7.00, 78.00),
-            # South of Sri Lanka → Bay of Bengal → Strait of Malacca
-            (5.50, 80.00), (5.00, 82.00), (5.00, 85.00), (5.00, 88.00),
-            (5.50, 92.00), (5.80, 95.00), (4.50, 97.50), (3.50, 99.50),
-            # Strait of Malacca to Singapore
-            (2.80, 100.80), (2.00, 102.00), (1.50, 103.40), (1.26, 103.82),
-        ],
+        "start": [72.84, 18.94], "end": [103.82, 1.26]
     },
     "shanghai_singapore": {
         "origin": "Shanghai", "destination": "Singapore",
-        "waypoints": [
-            # Shanghai → East China Sea → Taiwan Strait
-            (31.23, 121.47), (30.50, 122.50), (29.00, 122.50), (27.00, 121.50),
-            (25.00, 120.50), (23.50, 119.50),
-            # South China Sea
-            (21.00, 117.50), (18.50, 115.00), (15.00, 112.50), (12.00, 110.00),
-            (8.00, 108.00), (5.00, 106.00), (3.00, 105.00),
-            # Singapore Strait
-            (2.00, 104.00), (1.26, 103.82),
-        ],
+        "start": [121.47, 31.23], "end": [103.82, 1.26]
     },
     "singapore_hormuz": {
         "origin": "Singapore", "destination": "Bandar Abbas (Hormuz)",
-        "waypoints": [
-            # Singapore → Strait of Malacca → Indian Ocean
-            (1.26, 103.82), (1.50, 103.40), (2.00, 102.00), (2.80, 100.80),
-            (3.50, 99.50), (4.50, 97.50), (5.80, 95.00), (5.50, 92.00),
-            # Bay of Bengal → Arabian Sea → Gulf of Oman
-            (5.00, 85.00), (5.50, 80.00), (7.00, 72.00), (9.00, 65.00),
-            (12.00, 60.00), (15.50, 57.00), (20.00, 59.50),
-            # Gulf of Oman → Hormuz
-            (23.00, 60.00), (24.50, 58.80), (25.40, 57.80), (26.30, 56.40),
-        ],
+        "start": [103.82, 1.26], "end": [56.40, 26.30]
     },
     "la_yokohama": {
         "origin": "Los Angeles", "destination": "Yokohama",
-        "waypoints": [
-            # LA → Pacific (Great Circle approximation, staying in open ocean)
-            (33.74, -118.27), (33.50, -120.00), (34.00, -130.00),
-            (35.50, -140.00), (37.00, -150.00), (38.50, -160.00),
-            (39.00, -170.00), (38.50, 180.00), (38.00, 170.00),
-            (37.00, 160.00), (36.00, 150.00), (35.50, 145.00),
-            (35.44, 139.77),  # Yokohama
-        ],
+        "start": [-118.27, 33.74], "end": [139.77, 35.44]
     },
     "suez_mumbai": {
         "origin": "Port Said (Suez)", "destination": "Mumbai",
-        "waypoints": [
-            # Suez → Red Sea → Bab el-Mandeb → Arabian Sea → Mumbai
-            (31.25, 32.30), (29.95, 32.58), (27.50, 34.50), (24.00, 37.00),
-            (21.00, 38.00), (18.00, 39.50), (16.00, 41.00), (14.50, 42.00),
-            (13.50, 42.80), (12.60, 43.50), (12.00, 48.00), (12.50, 50.00),
-            (14.50, 52.00), (18.00, 58.00), (20.00, 63.00), (18.94, 72.84),
-        ],
+        "start": [32.30, 31.25], "end": [72.84, 18.94]
     },
     "rotterdam_suez": {
         "origin": "Rotterdam", "destination": "Port Said (Suez)",
-        "waypoints": [
-            (51.90, 4.00), (51.20, 1.80), (50.30, -1.00), (49.50, -3.50),
-            (48.70, -5.40), (47.00, -7.00), (43.00, -10.00), (38.00, -9.50),
-            (36.10, -7.50), (35.90, -5.70), (36.50, 5.00), (36.00, 12.00),
-            (35.50, 18.00), (35.00, 24.00), (33.60, 28.50), (31.80, 30.50),
-            (31.25, 32.30),
-        ],
+        "start": [4.00, 51.90], "end": [32.30, 31.25]
     },
 }
+
+ROUTES = {}
+for key, rdef in ROUTES_DEFS.items():
+    print(f"Generating sea route for {rdef['origin']} to {rdef['destination']}...")
+    # Generate route using searoute. Returns GeoJSON Feature with LineString
+    res = sr.searoute(rdef['start'], rdef['end'])
+    # Extract coordinates, format [lon, lat] -> (lat, lon) for our system
+    waypoints = [(p[1], p[0]) for p in res["geometry"]["coordinates"]]
+    ROUTES[key] = {
+        "origin": rdef["origin"],
+        "destination": rdef["destination"],
+        "waypoints": waypoints
+    }
+
+
 
 VESSEL_NAMES = [
     "MSC Aurora", "MV Horizon", "CMA Pegasus", "OOCL Pioneer",
