@@ -119,22 +119,22 @@ async def analyze_railway(req: RailwayRequest):
          "description": "Flood-prone section ahead. Reduce speed and inspect track."},
     ]
 
+    # Train-type base rate modifiers (per IRDAI inland transit guidelines)
+    _train_base_rates = {
+        "Express Freight": 0.06,    # Standard express service
+        "Parcel Express": 0.08,     # Higher value parcels, more handling
+        "Standard Freight": 0.05,   # Basic freight, lower base
+        "Container Rail": 0.07,     # Containerized, moderate handling risk
+    }
+
     if db_data and db_data.get("base_rate_pct"):
         base_rate = float(db_data["base_rate_pct"])
-        risk_loading = float(db_data.get("risk_loading_pct", 0.0))
-        premium_usd = float(db_data.get("estimated_premium_usd", 0.0))
     else:
-        # Train-type base rate modifiers (per IRDAI inland transit guidelines)
-        _train_base_rates = {
-            "Express Freight": 0.06,    # Standard express service
-            "Parcel Express": 0.08,     # Higher value parcels, more handling
-            "Standard Freight": 0.05,   # Basic freight, lower base
-            "Container Rail": 0.07,     # Containerized, moderate handling risk
-        }
         base_rate = _train_base_rates.get(req.train_type, 0.06)
-        risk_loading = round(overall / 100 * 0.85, 4)  # max ~0.85% at score=100
-        effective_rate = min(base_rate + risk_loading, 1.5)  # cap at 1.5%
-        premium_usd = round(req.cargo_value_usd * effective_rate / 100, 0)
+        
+    risk_loading = round(overall / 100 * 0.85, 4)  # max ~0.85% at score=100
+    effective_rate = min(base_rate + risk_loading, 1.5)  # cap at 1.5%
+    premium_usd = round(req.cargo_value_usd * effective_rate / 100, 0)
 
 
     suggestions = [

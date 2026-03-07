@@ -223,7 +223,7 @@ export default function Railway() {
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
                                         <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                                             <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Base Rate</p>
-                                            <p className="font-mono font-[700] text-text-main">{(result.premium.base_rate_pct * 100).toFixed(3)}%</p>
+                                            <p className="font-mono font-[700] text-text-main">{result.premium.base_rate_pct.toFixed(3)}%</p>
                                         </div>
                                         <div className="p-3 bg-orange-50 rounded-xl border border-orange-100">
                                             <p className="text-[10px] text-text-muted uppercase tracking-wide mb-1">Risk Loading</p>

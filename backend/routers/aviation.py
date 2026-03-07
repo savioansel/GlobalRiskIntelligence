@@ -242,30 +242,30 @@ async def analyze_aviation(req: AviationRequest):
         top_factors.append(RiskFactor(name="Standard Risk Profile", delta=2.0,
                    description="No exceptional risk factors identified for this route."))
 
+    # Aircraft-type base rate modifiers (per real hull underwriting)
+    _aircraft_base_rates = {
+        "Boeing 777-300ER": 1.10,   # Modern wide-body, excellent safety record
+        "Airbus A350-900": 1.05,    # Newest wide-body, composite fuselage
+        "Boeing 747-8F": 1.35,      # Freighter — higher base due to cargo risk
+        "Airbus A330-200": 1.15,    # Older wide-body, slightly higher base
+    }
+    # Cargo-type surcharges
+    _cargo_surcharges = {
+        "Passenger & Belly Cargo": 0.05,
+        "Passenger": 0.0,
+        "Full Freighter": 0.12,
+        "Hazardous Cargo": 0.20,
+    }
+
     if db_data and db_data.get("base_rate_pct"):
         base_rate = float(db_data["base_rate_pct"])
-        risk_loading = float(db_data.get("risk_loading_pct", 0.0))
-        premium_usd = float(db_data.get("estimated_premium_usd", 0.0))
     else:
-        # Aircraft-type base rate modifiers (per real hull underwriting)
-        _aircraft_base_rates = {
-            "Boeing 777-300ER": 1.10,   # Modern wide-body, excellent safety record
-            "Airbus A350-900": 1.05,    # Newest wide-body, composite fuselage
-            "Boeing 747-8F": 1.35,      # Freighter — higher base due to cargo risk
-            "Airbus A330-200": 1.15,    # Older wide-body, slightly higher base
-        }
-        # Cargo-type surcharges
-        _cargo_surcharges = {
-            "Passenger & Belly Cargo": 0.05,
-            "Passenger": 0.0,
-            "Full Freighter": 0.12,
-            "Hazardous Cargo": 0.20,
-        }
         base_rate = _aircraft_base_rates.get(req.aircraft_type, 1.20)
         base_rate += _cargo_surcharges.get(req.cargo_type, 0.0)
-        risk_loading = round(overall / 100 * 2.8, 4)  # max ~2.8% at score=100
-        effective_rate = min(base_rate + risk_loading, 5.0)  # cap at 5%
-        premium_usd = round(req.insured_value_usd * effective_rate / 100, 0)
+        
+    risk_loading = round(overall / 100 * 2.8, 4)  # max ~2.8% at score=100
+    effective_rate = min(base_rate + risk_loading, 5.0)  # cap at 5%
+    premium_usd = round(req.insured_value_usd * effective_rate / 100, 0)
 
 
     suggestions = [
