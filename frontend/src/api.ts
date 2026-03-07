@@ -38,3 +38,11 @@ export const simulateScenario = (body: object) =>
 export const getPortfolio = () => api.get("/api/portfolio").then(r => r.data);
 export const addPortfolioPosition = (body: object) => api.post("/api/portfolio", body).then(r => r.data);
 export const deletePortfolioPosition = (id: string) => api.delete(`/api/portfolio/${id}`).then(r => r.data);
+
+// AIS Live Tracking
+export const getAisVessels = () => api.get("/api/ais/vessels").then(r => r.data);
+export const getAisAlerts = (params?: { severity?: string; alert_type?: string }) =>
+    api.get("/api/ais/alerts", { params }).then(r => r.data);
+export const getAisExposure = () => api.get("/api/ais/exposure").then(r => r.data);
+export const postAisPing = (body: object) => api.post("/api/ais/ping", body).then(r => r.data);
+export const registerVoyage = (body: object) => api.post("/api/ais/voyage", body).then(r => r.data);

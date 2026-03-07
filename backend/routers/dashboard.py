@@ -119,7 +119,10 @@ def get_summary():
 
 @router.get("/intel-feed")
 def get_intel_feed():
-    return {"feed": INTEL_FEED}
+    from backend.routers.ais import ais_intel_items
+    # Merge static feed with live AIS alerts (newest first)
+    combined = list(INTEL_FEED) + list(ais_intel_items)
+    return {"feed": combined}
 
 
 @router.get("/risk-trend")
