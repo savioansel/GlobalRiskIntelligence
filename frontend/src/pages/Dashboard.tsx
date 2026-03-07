@@ -16,7 +16,13 @@ function KpiCard({ label, value, color, icon, delta }: any) {
     return (
         <div className="card p-6 relative overflow-hidden group" style={{ background: `linear-gradient(135deg, ${color}18 0%, #fff 100%)` }}>
             <div className="flex justify-between items-start mb-4">
-                <h3 className="font-display text-text-muted text-[11px] uppercase tracking-wider">{label}</h3>
+                <div className="flex items-center gap-2">
+                    <h3 className="font-display text-text-muted text-[11px] uppercase tracking-wider">{label}</h3>
+                    <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-100">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_4px_rgba(16,185,129,0.5)]"></div>
+                        <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Live</span>
+                    </div>
+                </div>
                 <div className="bg-white/80 backdrop-blur-sm p-1.5 rounded-lg shadow-sm border border-gray-100 text-gray-600">
                     <span className="ms text-[18px]">{icon}</span>
                 </div>
@@ -62,7 +68,11 @@ function LiveClock() {
 
 export default function Dashboard() {
     const navigate = useNavigate();
-    const { data: summary } = useQuery({ queryKey: ["dashboard-summary"], queryFn: getDashboardSummary });
+    const { data: summary } = useQuery({
+        queryKey: ["dashboard-summary"],
+        queryFn: getDashboardSummary,
+        refetchInterval: 60000 // auto-refresh every 60s
+    });
     const { data: intelData } = useQuery({ queryKey: ["intel-feed"], queryFn: getIntelFeed });
     const [trendDays, setTrendDays] = useState<7 | 30 | 90>(30);
     const { data: trendData } = useQuery({ queryKey: ["risk-trend", trendDays], queryFn: () => getRiskTrend(trendDays) });
@@ -90,12 +100,25 @@ export default function Dashboard() {
 
                 {/* KPIs */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <KpiCard label="Active Critical Alerts" value={summary?.active_critical_alerts ?? 14}
-                        color="#ef4444" icon="warning" delta="+3 since yesterday" />
-                    <KpiCard label="Avg Portfolio Risk" value={`${summary?.avg_portfolio_risk ?? 42}/100`}
-                        color="#f59e0b" icon="monitoring" />
-                    <KpiCard label="Value at Risk" value={`$${summary?.value_at_risk_billions ?? 4.2}B`}
-                        color="#3b82f6" icon="account_balance" />
+                    {summary ? (
+                        <>
+                            <KpiCard label="Active Critical Alerts" value={summary.active_critical_alerts}
+                                color="#ef4444" icon="warning" delta="+3 since yesterday" />
+                            <KpiCard label="Avg Portfolio Risk" value={`${summary.avg_portfolio_risk}/100`}
+                                color="#f59e0b" icon="monitoring" />
+                            <KpiCard label="Value at Risk" value={`$${summary.value_at_risk_millions}M`}
+                                color="#3b82f6" icon="account_balance" />
+                        </>
+                    ) : (
+                        // Skeleton loading state
+                        [1, 2, 3].map((i) => (
+                            <div key={i} className="card p-6 h-[140px] animate-pulse bg-gray-50 border-gray-100 flex flex-col justify-between">
+                                <div className="h-4 w-24 bg-gray-200 rounded"></div>
+                                <div className="h-10 w-32 bg-gray-200 rounded mt-4"></div>
+                                <div className="h-4 w-20 bg-gray-200 rounded mt-2"></div>
+                            </div>
+                        ))
+                    )}
                 </div>
 
                 {/* Map + Feed */}
@@ -179,9 +202,9 @@ export default function Dashboard() {
 
                     {/* Module status tiles (2x2 grid) */}
                     <div className="lg:col-span-4 grid grid-cols-2 gap-4">
-                        <ModuleTile icon="flight" label="Aviation" status={summary?.aviation_status ?? "NORMAL"} disruptions={2} onClick={() => navigate("/aviation")} />
-                        <ModuleTile icon="sailing" label="Maritime" status={summary?.maritime_status ?? "CRITICAL"} disruptions={14} onClick={() => navigate("/maritime")} />
-                        <ModuleTile icon="train" label="Railway" status={summary?.railway_status ?? "WARNING"} disruptions={5} onClick={() => navigate("/railway")} />
+                        <ModuleTile icon="flight" label="Aviation" status={summary?.aviation_status} disruptions={2} onClick={() => navigate("/aviation")} />
+                        <ModuleTile icon="sailing" label="Maritime" status={summary?.maritime_status} disruptions={14} onClick={() => navigate("/maritime")} />
+                        <ModuleTile icon="train" label="Railway" status={summary?.railway_status} disruptions={5} onClick={() => navigate("/railway")} />
                         <div className="card card-hover p-4 flex flex-col gap-4 cursor-pointer bg-gradient-to-br from-white to-indigo-50/30" onClick={() => navigate("/portfolio")}>
                             <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 w-fit">
                                 <span className="ms text-[22px]">business_center</span>

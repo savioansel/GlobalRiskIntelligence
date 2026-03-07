@@ -172,6 +172,7 @@ def _compute_optimal_route(origin: str, dest: str, aircraft: str, pref: str) -> 
 @router.post("/analyze", response_model=AviationResponse)
 async def analyze_aviation(req: AviationRequest):
     await asyncio.sleep(1.5)  # Simulated ML inference delay for demo
+    db_data = None
     try:
         # Try to use the real aviation risk engine
         from engine.risk_engine import compute_flight_risk  # type: ignore
@@ -180,17 +181,31 @@ async def analyze_aviation(req: AviationRequest):
         overall = float(result.get("overall_score", 55))
         dims_raw = result.get("dimensions", {})
     except Exception:
-        # Fallback: deterministic but realistic dimension scores
+        # Fetch from DB instead of fallback
+        from backend.db import fetch_aviation_flight
+        db_data = fetch_aviation_flight(req.origin_icao, req.destination_icao)
+        
         import random, hashlib
         seed = int(hashlib.md5(f"{req.origin_icao}{req.destination_icao}".encode()).hexdigest(), 16) % 10000
         rng = random.Random(seed)
-        dims_raw = {
-            "Weather": rng.uniform(15, 70),
-            "Security": rng.uniform(20, 90),
-            "ATC Congestion": rng.uniform(10, 60),
-            "Airport Quality": rng.uniform(10, 50),
-            "Airspace Complexity": rng.uniform(15, 65),
-        }
+        
+        if db_data and db_data.get("risk_score"):
+            overall_db = float(db_data["risk_score"])
+            dims_raw = {
+                "Weather": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+                "Security": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+                "ATC Congestion": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+                "Airport Quality": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+                "Airspace Complexity": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+            }
+        else:
+            dims_raw = {
+                "Weather": rng.uniform(15, 70),
+                "Security": rng.uniform(20, 90),
+                "ATC Congestion": rng.uniform(10, 60),
+                "Airport Quality": rng.uniform(10, 50),
+                "Airspace Complexity": rng.uniform(15, 65),
+            }
 
     weights = {"Weather": 0.20, "Security": 0.30, "ATC Congestion": 0.20,
                "Airport Quality": 0.15, "Airspace Complexity": 0.15}
@@ -227,25 +242,31 @@ async def analyze_aviation(req: AviationRequest):
         top_factors.append(RiskFactor(name="Standard Risk Profile", delta=2.0,
                    description="No exceptional risk factors identified for this route."))
 
-    # Aircraft-type base rate modifiers (per real hull underwriting)
-    _aircraft_base_rates = {
-        "Boeing 777-300ER": 1.10,   # Modern wide-body, excellent safety record
-        "Airbus A350-900": 1.05,    # Newest wide-body, composite fuselage
-        "Boeing 747-8F": 1.35,      # Freighter — higher base due to cargo risk
-        "Airbus A330-200": 1.15,    # Older wide-body, slightly higher base
-    }
-    # Cargo-type surcharges
-    _cargo_surcharges = {
-        "Passenger & Belly Cargo": 0.05,
-        "Passenger": 0.0,
-        "Full Freighter": 0.12,
-        "Hazardous Cargo": 0.20,
-    }
-    base_rate = _aircraft_base_rates.get(req.aircraft_type, 1.20)
-    base_rate += _cargo_surcharges.get(req.cargo_type, 0.0)
-    risk_loading = round(overall / 100 * 2.8, 4)  # max ~2.8% at score=100
-    effective_rate = min(base_rate + risk_loading, 5.0)  # cap at 5%
-    premium_usd = round(req.insured_value_usd * effective_rate / 100, 0)
+    if db_data and db_data.get("base_rate_pct"):
+        base_rate = float(db_data["base_rate_pct"])
+        risk_loading = float(db_data.get("risk_loading_pct", 0.0))
+        premium_usd = float(db_data.get("estimated_premium_usd", 0.0))
+    else:
+        # Aircraft-type base rate modifiers (per real hull underwriting)
+        _aircraft_base_rates = {
+            "Boeing 777-300ER": 1.10,   # Modern wide-body, excellent safety record
+            "Airbus A350-900": 1.05,    # Newest wide-body, composite fuselage
+            "Boeing 747-8F": 1.35,      # Freighter — higher base due to cargo risk
+            "Airbus A330-200": 1.15,    # Older wide-body, slightly higher base
+        }
+        # Cargo-type surcharges
+        _cargo_surcharges = {
+            "Passenger & Belly Cargo": 0.05,
+            "Passenger": 0.0,
+            "Full Freighter": 0.12,
+            "Hazardous Cargo": 0.20,
+        }
+        base_rate = _aircraft_base_rates.get(req.aircraft_type, 1.20)
+        base_rate += _cargo_surcharges.get(req.cargo_type, 0.0)
+        risk_loading = round(overall / 100 * 2.8, 4)  # max ~2.8% at score=100
+        effective_rate = min(base_rate + risk_loading, 5.0)  # cap at 5%
+        premium_usd = round(req.insured_value_usd * effective_rate / 100, 0)
+
 
     suggestions = [
         "Re-route to avoid restricted airspace (saves ~8 risk pts)",

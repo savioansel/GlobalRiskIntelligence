@@ -1,7 +1,14 @@
-import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppLayout } from "../App";
-import { analyzeAviation, analyzeMaritime, analyzeRailway } from "../api";
+import {
+    analyzeAviation,
+    analyzeMaritime,
+    analyzeRailway,
+    getPortfolio,
+    addPortfolioPosition,
+    deletePortfolioPosition
+} from "../api";
 import { toast } from "react-hot-toast";
 import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -19,16 +26,6 @@ interface Position {
     premium: number;
 }
 
-const SEED_POSITIONS: Position[] = [
-    { id: "MAR-001", route: "Mumbai → Rotterdam", type: "Maritime", value: 45_000_000, risk: 78, level: "HIGH", premium: 540_000 },
-    { id: "AVI-042", route: "VABB → EGLL", type: "Aviation", value: 150_000_000, risk: 62, level: "ELEVATED", premium: 1_080_000 },
-    { id: "RAI-019", route: "Delhi IGI → Mumbai CSMT", type: "Railway", value: 2_000_000, risk: 55, level: "ELEVATED", premium: 48_000 },
-    { id: "MAR-007", route: "Shanghai → LA", type: "Maritime", value: 85_000_000, risk: 41, level: "ELEVATED", premium: 620_000 },
-    { id: "AVI-088", route: "VABB → WSSS", type: "Aviation", value: 90_000_000, risk: 28, level: "LOW", premium: 380_000 },
-    { id: "RAI-033", route: "Chennai → Delhi", type: "Railway", value: 3_500_000, risk: 84, level: "CRITICAL", premium: 95_000 },
-    { id: "MAR-023", route: "Dubai → Singapore", type: "Maritime", value: 60_000_000, risk: 67, level: "HIGH", premium: 810_000 },
-];
-
 const LEVEL_CLS: Record<string, string> = {
     CRITICAL: "badge-critical", HIGH: "badge-high",
     ELEVATED: "badge-elevated", LOW: "badge-low", NORMAL: "badge-normal",
@@ -36,7 +33,7 @@ const LEVEL_CLS: Record<string, string> = {
 const TYPE_COLOR: Record<string, string> = { Maritime: "#3b82f6", Aviation: "#0d9488", Railway: "#f59e0b" };
 
 // ── Add Position Form ─────────────────────────────────────────────────────────
-function AddPositionModal({ onAdd, onClose }: { onAdd: (p: Position) => void; onClose: () => void }) {
+function AddPositionModal({ onClose }: { onClose: () => void }) {
     const [type, setType] = useState<"Aviation" | "Maritime" | "Railway">("Maritime");
     const [origin, setOrigin] = useState("");
     const [dest, setDest] = useState("");
@@ -44,10 +41,19 @@ function AddPositionModal({ onAdd, onClose }: { onAdd: (p: Position) => void; on
     const [cargoType, setCargoType] = useState("Container");
     const [error, setError] = useState<string | null>(null);
 
-    const aviM = useMutation({ mutationFn: analyzeAviation, onSuccess: () => toast.success("Aviation route analyzed"), onError: () => toast.error("Failed analyzing aviation") });
-    const marM = useMutation({ mutationFn: analyzeMaritime, onSuccess: () => toast.success("Maritime route analyzed"), onError: () => toast.error("Failed analyzing maritime") });
-    const railM = useMutation({ mutationFn: analyzeRailway, onSuccess: () => toast.success("Railway route analyzed"), onError: () => toast.error("Failed analyzing railway") });
-    const isPending = aviM.isPending || marM.isPending || railM.isPending;
+    const aviM = useMutation({ mutationFn: analyzeAviation });
+    const marM = useMutation({ mutationFn: analyzeMaritime });
+    const railM = useMutation({ mutationFn: analyzeRailway });
+    const addM = useMutation({
+        mutationFn: addPortfolioPosition,
+        onSuccess: () => {
+            toast.success("Position added to portfolio");
+            onClose();
+        },
+        onError: () => toast.error("Failed to save to database")
+    });
+
+    const isPending = aviM.isPending || marM.isPending || railM.isPending || addM.isPending;
 
     const analyze = async () => {
         setError(null);
@@ -69,8 +75,7 @@ function AddPositionModal({ onAdd, onClose }: { onAdd: (p: Position) => void; on
                 level: result.risk_level,
                 premium: Math.round(result.premium.estimated_premium_usd),
             };
-            onAdd(newPos);
-            onClose();
+            addM.mutate(newPos);
         } catch {
             setError("Failed to analyze route. Check if backend is running and try again.");
         }
@@ -145,10 +150,10 @@ function AddPositionModal({ onAdd, onClose }: { onAdd: (p: Position) => void; on
                     <button className="btn-primary mt-1 w-full justify-center"
                         onClick={analyze} disabled={isPending || !origin || !dest}>
                         {isPending
-                            ? <><span className="ms text-base animate-spin">autorenew</span>Analyzing Route…</>
+                            ? <><span className="ms text-base animate-spin">autorenew</span>Processing…</>
                             : <><span className="ms text-base">analytics</span>Analyze & Add to Portfolio</>}
                     </button>
-                    <p className="text-[11px] text-text-muted text-center">This will call the live risk API to price the position.</p>
+                    <p className="text-[11px] text-text-muted text-center">This will call the live risk API and save to Supabase.</p>
                 </div>
             </div>
         </div>
@@ -181,17 +186,20 @@ function exportPortfolioPDF(positions: Position[]) {
 }
 
 export default function Portfolio() {
-    const [positions, setPositions] = useState<Position[]>(() => {
-        const saved = localStorage.getItem("globalrisk_portfolio");
-        if (saved) {
-            try { return JSON.parse(saved); } catch (e) { return SEED_POSITIONS; }
-        }
-        return SEED_POSITIONS;
+    const queryClient = useQueryClient();
+    const { data: positions = [], isLoading } = useQuery<Position[]>({
+        queryKey: ["portfolio"],
+        queryFn: getPortfolio,
+        refetchInterval: 30000 // Refresh every 30s
     });
 
-    useEffect(() => {
-        localStorage.setItem("globalrisk_portfolio", JSON.stringify(positions));
-    }, [positions]);
+    const removeM = useMutation({
+        mutationFn: deletePortfolioPosition,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+            toast.success("Position removed");
+        }
+    });
 
     const [showAdd, setShowAdd] = useState(false);
     const [filterType, setFilterType] = useState<string>("All");
@@ -214,14 +222,15 @@ export default function Portfolio() {
         { name: "75–100 (Critical)", count: filtered.filter(p => p.risk >= 75).length, fill: "#ef4444" },
     ];
 
-    const removePosition = (id: string) => setPositions(ps => ps.filter(p => p.id !== id));
 
     return (
         <AppLayout title="Portfolio Exposure">
             {showAdd && (
                 <AddPositionModal
-                    onAdd={p => setPositions(prev => [...prev, p])}
-                    onClose={() => setShowAdd(false)}
+                    onClose={() => {
+                        setShowAdd(false);
+                        queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+                    }}
                 />
             )}
             <div className="max-w-[1440px] mx-auto flex flex-col gap-6 animate-fade-in">
@@ -345,8 +354,9 @@ export default function Portfolio() {
                                         </td>
                                         <td className="px-5 py-3.5 font-mono text-text-main">${p.premium.toLocaleString()}</td>
                                         <td className="px-5 py-3.5">
-                                            <button onClick={() => removePosition(p.id)}
-                                                className="p-1 hover:bg-rose-50 rounded-lg transition-colors text-text-muted hover:text-rose-500">
+                                            <button onClick={() => removeM.mutate(p.id)}
+                                                disabled={removeM.isPending}
+                                                className="p-1 hover:bg-rose-50 rounded-lg transition-colors text-text-muted hover:text-rose-500 disabled:opacity-50">
                                                 <span className="ms text-base">delete</span>
                                             </button>
                                         </td>
@@ -354,9 +364,14 @@ export default function Portfolio() {
                                 ))}
                             </tbody>
                         </table>
-                        {filtered.length === 0 && (
+                        {isLoading ? (
+                            <div className="p-8 text-center text-text-muted text-sm flex flex-col items-center gap-3">
+                                <span className="ms text-2xl animate-spin">sync</span>
+                                Loading portfolio data...
+                            </div>
+                        ) : filtered.length === 0 ? (
                             <div className="p-8 text-center text-text-muted text-sm">No positions match this filter.</div>
-                        )}
+                        ) : null}
                     </div>
                 </div>
             </div>

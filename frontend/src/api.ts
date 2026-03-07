@@ -33,3 +33,8 @@ export const aiChat = (body: object) =>
 
 export const simulateScenario = (body: object) =>
     api.post("/api/ai/simulate-scenario", body).then(r => r.data);
+
+// Portfolio
+export const getPortfolio = () => api.get("/api/portfolio").then(r => r.data);
+export const addPortfolioPosition = (body: object) => api.post("/api/portfolio", body).then(r => r.data);
+export const deletePortfolioPosition = (id: string) => api.delete(`/api/portfolio/${id}`).then(r => r.data);

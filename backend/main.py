@@ -13,7 +13,7 @@ sys.path.insert(0, _ROOT)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import aviation, maritime, railway, dashboard, ai_router
+from backend.routers import aviation, maritime, railway, dashboard, ai_router, portfolio
 
 app = FastAPI(
     title="GlobalRisk Intelligence API",
@@ -30,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
+app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
 app.include_router(aviation.router,  prefix="/api/aviation",  tags=["Aviation"])
 app.include_router(maritime.router,  prefix="/api/maritime",  tags=["Maritime"])
 app.include_router(railway.router,   prefix="/api/railway",   tags=["Railway"])

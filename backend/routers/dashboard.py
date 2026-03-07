@@ -4,6 +4,22 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import random
+import os
+import urllib.request
+import json
+from dotenv import load_dotenv
+
+env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+load_dotenv(dotenv_path=env_path, override=True)
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+headers = {
+    "apikey": SUPABASE_KEY or "",
+    "Authorization": f"Bearer {SUPABASE_KEY or ''}",
+    "Content-Type": "application/json"
+}
 
 router = APIRouter()
 
@@ -11,7 +27,7 @@ router = APIRouter()
 class DashboardSummary(BaseModel):
     active_critical_alerts: int
     avg_portfolio_risk: int
-    value_at_risk_billions: float
+    value_at_risk_millions: float
     aviation_status: str
     maritime_status: str
     railway_status: str
@@ -47,15 +63,58 @@ RISK_TREND = {
 
 @router.get("/summary", response_model=DashboardSummary)
 def get_summary():
-    return DashboardSummary(
-        active_critical_alerts=14,
-        avg_portfolio_risk=42,
-        value_at_risk_billions=4.2,
-        aviation_status="NORMAL",
-        maritime_status="CRITICAL",
-        railway_status="WARNING",
-        last_updated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-    )
+    # Fetch from portfolio_positions Table
+    active_critical = 0
+    total_risk = 0.0
+    total_records = 0
+    total_insured_value = 0.0
+
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/portfolio_positions?select=risk,level,value"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15.0) as resp:
+            if resp.status == 200:
+                rows = json.loads(resp.read().decode())
+                for r in rows:
+                    risk = float(r.get("risk") or 0)
+                    level = str(r.get("level") or "").upper()
+                    val = float(r.get("value") or 0)
+                    
+                    if level == "CRITICAL" or risk > 75:
+                        active_critical += 1
+                    
+                    total_risk += risk
+                    total_insured_value += val
+                    total_records += 1
+    except Exception as e:
+        print(f"Error fetching portfolio_positions: {e}")
+        pass
+
+    if total_records > 0:
+        avg_risk = int(total_risk / total_records)
+        # We'll use 1/1000th of value as "Value at Risk" for demo, or keep it simple
+        val_at_risk_m = round(total_insured_value / 1_000_000, 1)
+             
+        return DashboardSummary(
+            active_critical_alerts=active_critical,
+            avg_portfolio_risk=avg_risk,
+            value_at_risk_millions=val_at_risk_m,
+            aviation_status="NORMAL",
+            maritime_status="CRITICAL",
+            railway_status="WARNING",
+            last_updated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        )
+    else:
+        # Fallback if DB is empty or connection fails
+        return DashboardSummary(
+            active_critical_alerts=14,
+            avg_portfolio_risk=42,
+            value_at_risk_millions=4200.0,
+            aviation_status="NORMAL",
+            maritime_status="CRITICAL",
+            railway_status="WARNING",
+            last_updated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        )
 
 
 @router.get("/intel-feed")

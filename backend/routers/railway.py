@@ -36,22 +36,37 @@ class RailwayResponse(BaseModel):
 @router.post("/analyze", response_model=RailwayResponse)
 async def analyze_railway(req: RailwayRequest):
     await asyncio.sleep(1.2)  # Simulated computation delay for demo
+    db_data = None
     try:
         from risk_engine import compute_shipment_risk  # type: ignore
         res = compute_shipment_risk(req.origin_station, req.destination_station,
                                     req.cargo_type, req.train_type)
         dims_raw = {d.name: d.score for d in res.dimension_scores}
     except Exception:
+        from backend.db import fetch_railway_train
+        db_data = fetch_railway_train(req.origin_station, req.destination_station)
+
         import random, hashlib
         seed = int(hashlib.md5(f"{req.origin_station}{req.destination_station}".encode()).hexdigest(), 16) % 10000
         rng = random.Random(seed)
-        dims_raw = {
-            "Security / Naxal": rng.uniform(10, 92),
-            "Weather / Monsoon": rng.uniform(15, 75),
-            "Train Behavior":    rng.uniform(10, 60),
-            "Route / Terrain":   rng.uniform(15, 65),
-            "Terminal Congestion": rng.uniform(10, 55),
-        }
+        
+        if db_data and db_data.get("risk_score"):
+            overall_db = float(db_data["risk_score"])
+            dims_raw = {
+                "Security / Naxal": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+                "Weather / Monsoon": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+                "Train Behavior": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+                "Route / Terrain": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+                "Terminal Congestion": min(100.0, overall_db * rng.uniform(0.8, 1.2)),
+            }
+        else:
+            dims_raw = {
+                "Security / Naxal": rng.uniform(10, 92),
+                "Weather / Monsoon": rng.uniform(15, 75),
+                "Train Behavior":    rng.uniform(10, 60),
+                "Route / Terrain":   rng.uniform(15, 65),
+                "Terminal Congestion": rng.uniform(10, 55),
+            }
 
     dim_weights = [0.25, 0.20, 0.20, 0.20, 0.15]
     dim_colors = ["#ef4444", "#3b82f6", "#f97316", "#8b5cf6", "#10b981"]
@@ -104,17 +119,23 @@ async def analyze_railway(req: RailwayRequest):
          "description": "Flood-prone section ahead. Reduce speed and inspect track."},
     ]
 
-    # Train-type base rate modifiers (per IRDAI inland transit guidelines)
-    _train_base_rates = {
-        "Express Freight": 0.06,    # Standard express service
-        "Parcel Express": 0.08,     # Higher value parcels, more handling
-        "Standard Freight": 0.05,   # Basic freight, lower base
-        "Container Rail": 0.07,     # Containerized, moderate handling risk
-    }
-    base_rate = _train_base_rates.get(req.train_type, 0.06)
-    risk_loading = round(overall / 100 * 0.85, 4)  # max ~0.85% at score=100
-    effective_rate = min(base_rate + risk_loading, 1.5)  # cap at 1.5%
-    premium_usd = round(req.cargo_value_usd * effective_rate / 100, 0)
+    if db_data and db_data.get("base_rate_pct"):
+        base_rate = float(db_data["base_rate_pct"])
+        risk_loading = float(db_data.get("risk_loading_pct", 0.0))
+        premium_usd = float(db_data.get("estimated_premium_usd", 0.0))
+    else:
+        # Train-type base rate modifiers (per IRDAI inland transit guidelines)
+        _train_base_rates = {
+            "Express Freight": 0.06,    # Standard express service
+            "Parcel Express": 0.08,     # Higher value parcels, more handling
+            "Standard Freight": 0.05,   # Basic freight, lower base
+            "Container Rail": 0.07,     # Containerized, moderate handling risk
+        }
+        base_rate = _train_base_rates.get(req.train_type, 0.06)
+        risk_loading = round(overall / 100 * 0.85, 4)  # max ~0.85% at score=100
+        effective_rate = min(base_rate + risk_loading, 1.5)  # cap at 1.5%
+        premium_usd = round(req.cargo_value_usd * effective_rate / 100, 0)
+
 
     suggestions = [
         "Request RPF armed escort for Red Corridor segment",
