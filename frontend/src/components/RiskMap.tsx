@@ -290,18 +290,24 @@ const MARITIME_WP = {
     PAC_M_M: [25.0, 180.0] as [number, number], // dateline
     PAC_M_E: [25.0, -140.0] as [number, number],
 
+    PACIFIC_SOUTH_WEST: [-20.0, 170.0] as [number, number],
+    PACIFIC_SOUTH_MID: [-25.0, -150.0] as [number, number],
+    PACIFIC_SOUTH_EAST: [-30.0, -90.0] as [number, number],
+
     // ── Oceania ───
     JAVA_SEA_W: [-4.0, 108.0] as [number, number],
     JAVA_SEA_E: [-6.0, 115.0] as [number, number],
     FLORES_SEA: [-8.0, 122.0] as [number, number],
     TIMOR_SEA: [-10.0, 128.0] as [number, number],
     ARAFURA_SEA: [-11.0, 135.0] as [number, number],
-    TORRES_STRAIT: [-10.5, 142.0] as [number, number],
-    CORAL_SEA_N: [-15.0, 148.0] as [number, number],
-    CORAL_SEA_S: [-22.0, 154.0] as [number, number],
+    TORRES_STRAIT: [-10.5, 142.0] as [number, number], // Too tight for large ships but okay for general nodes
+    SOLOMON_SEA: [-4.0, 153.0] as [number, number], // Safely passes east of PNG
+    CORAL_SEA_N: [-15.0, 155.0] as [number, number],
+    CORAL_SEA_S: [-22.0, 155.0] as [number, number],
     SYD_APP: [-33.5, 152.0] as [number, number],
-    TASMAN_SEA: [-38.0, 150.0] as [number, number],
-    MEL_APP: [-39.0, 145.0] as [number, number],
+    CAPE_HOWE: [-37.8, 150.5] as [number, number],
+    BASS_STRAIT_E: [-39.5, 148.0] as [number, number],
+    MEL_APP: [-39.5, 145.0] as [number, number],
     GREAT_AUS_BIGHT: [-36.0, 130.0] as [number, number],
     AUS_SW: [-35.0, 115.0] as [number, number],
 
@@ -313,7 +319,33 @@ const MARITIME_WP = {
     PHILIPPINE_SEA_S: [8.0, 128.0] as [number, number],
     PHILIPPINE_SEA_M: [15.0, 130.0] as [number, number],
     PHILIPPINE_SEA_N: [22.0, 130.0] as [number, number],
-    JP_SOUTH_E: [30.0, 135.0] as [number, number]
+    JP_SOUTH_E: [30.0, 135.0] as [number, number],
+
+    // ── Americas & Atlantic ───
+    US_WEST_COAST: [33.0, -122.0] as [number, number],
+    MEXICO_WEST: [15.0, -100.0] as [number, number],
+    PANAMA_PACIFIC: [7.0, -80.0] as [number, number],
+    PANAMA_ATLANTIC: [10.0, -79.5] as [number, number],
+    CARIBBEAN_SEA: [15.0, -70.0] as [number, number],
+    GULF_OF_MEXICO: [25.0, -90.0] as [number, number],
+    FLORIDA_STRAIT: [24.0, -80.0] as [number, number],
+    US_EAST_COAST_SOUTH: [30.0, -75.0] as [number, number],
+    US_EAST_COAST_MID: [35.0, -73.0] as [number, number],
+    US_EAST_COAST_NORTH: [40.0, -70.0] as [number, number],
+    CANADIAN_COAST: [45.0, -60.0] as [number, number],
+    MID_ATLANTIC_WEST: [25.0, -60.0] as [number, number],
+    MID_ATLANTIC_MID: [30.0, -45.0] as [number, number],
+    MID_ATLANTIC_EAST: [30.0, -30.0] as [number, number],
+    EQUATORIAL_ATLANTIC_WEST: [0.0, -40.0] as [number, number],
+    EQUATORIAL_ATLANTIC: [0.0, -25.0] as [number, number],
+    SOUTH_ATLANTIC_WEST: [-25.0, -35.0] as [number, number],
+    SOUTH_ATLANTIC_MID: [-25.0, -20.0] as [number, number],
+    SOUTH_ATLANTIC_EAST: [-25.0, -5.0] as [number, number],
+    CAPE_HORN_WEST: [-55.0, -75.0] as [number, number],
+    CAPE_HORN: [-57.0, -67.0] as [number, number],
+    CAPE_HORN_EAST: [-53.0, -60.0] as [number, number],
+    CHILE_COAST: [-30.0, -75.0] as [number, number],
+    BRAZIL_COAST: [-20.0, -35.0] as [number, number]
 };
 
 const WP_EDGES: Array<[keyof typeof MARITIME_WP, keyof typeof MARITIME_WP]> = [
@@ -450,6 +482,7 @@ const WP_EDGES: Array<[keyof typeof MARITIME_WP, keyof typeof MARITIME_WP]> = [
     ["ATL_N_M", "ATL_N_W"],
     ["ATL_N_W", "NYC_APP_E"],
     ["NYC_APP_E", "NYC_APP"],
+    ["NYC_APP", "US_EAST_COAST_NORTH"],
 
     // Oceania
     ["SINGAPORE_STRAIT_E", "JAVA_SEA_W"],
@@ -461,8 +494,9 @@ const WP_EDGES: Array<[keyof typeof MARITIME_WP, keyof typeof MARITIME_WP]> = [
     ["TORRES_STRAIT", "CORAL_SEA_N"],
     ["CORAL_SEA_N", "CORAL_SEA_S"],
     ["CORAL_SEA_S", "SYD_APP"],
-    ["SYD_APP", "TASMAN_SEA"],
-    ["TASMAN_SEA", "MEL_APP"],
+    ["SYD_APP", "CAPE_HOWE"],
+    ["CAPE_HOWE", "BASS_STRAIT_E"],
+    ["BASS_STRAIT_E", "MEL_APP"],
     ["MEL_APP", "GREAT_AUS_BIGHT"],
     ["GREAT_AUS_BIGHT", "AUS_SW"],
     ["AUS_SW", "JAVA_SEA_W"], // Australian loop
@@ -483,7 +517,44 @@ const WP_EDGES: Array<[keyof typeof MARITIME_WP, keyof typeof MARITIME_WP]> = [
     ["JP_SOUTH_E", "JP_SOUTH"], // Re-enter Japan safely without SCS
 
     // Connect Philippines bypass to Australia correctly
-    ["PHILIPPINE_SEA_S", "CORAL_SEA_N"]
+    ["PHILIPPINE_SEA_S", "SOLOMON_SEA"],
+    ["SOLOMON_SEA", "CORAL_SEA_N"],
+    ["CORAL_SEA_S", "PACIFIC_SOUTH_WEST"],
+    ["PACIFIC_SOUTH_WEST", "PACIFIC_SOUTH_MID"],
+    ["PACIFIC_SOUTH_MID", "PACIFIC_SOUTH_EAST"],
+
+    // Americas & Atlantic Crossing
+    ["LAX_APP", "US_WEST_COAST"],
+    ["US_WEST_COAST", "MEXICO_WEST"],
+    ["MEXICO_WEST", "PANAMA_PACIFIC"],
+    ["CHILE_COAST", "PANAMA_PACIFIC"],
+    ["PACIFIC_SOUTH_EAST", "CHILE_COAST"],
+    ["CHILE_COAST", "CAPE_HORN_WEST"],
+    ["CAPE_HORN_WEST", "CAPE_HORN"],
+    ["CAPE_HORN", "CAPE_HORN_EAST"],
+    ["CAPE_HORN_EAST", "BRAZIL_COAST"],
+    ["PANAMA_PACIFIC", "PANAMA_ATLANTIC"],
+    ["PANAMA_ATLANTIC", "CARIBBEAN_SEA"],
+    ["CARIBBEAN_SEA", "FLORIDA_STRAIT"],
+    ["CARIBBEAN_SEA", "MID_ATLANTIC_WEST"],
+    ["CARIBBEAN_SEA", "EQUATORIAL_ATLANTIC_WEST"],
+    ["GULF_OF_MEXICO", "FLORIDA_STRAIT"],
+    ["FLORIDA_STRAIT", "US_EAST_COAST_SOUTH"],
+    ["US_EAST_COAST_SOUTH", "US_EAST_COAST_MID"],
+    ["US_EAST_COAST_MID", "US_EAST_COAST_NORTH"],
+    ["US_EAST_COAST_NORTH", "CANADIAN_COAST"],
+    ["CANADIAN_COAST", "ATL_N_W"],
+    ["US_EAST_COAST_MID", "ATL_N_W"],
+    ["US_EAST_COAST_SOUTH", "MID_ATLANTIC_WEST"],
+    ["MID_ATLANTIC_WEST", "MID_ATLANTIC_MID"],
+    ["MID_ATLANTIC_MID", "MID_ATLANTIC_EAST"],
+    ["MID_ATLANTIC_EAST", "EQUATORIAL_ATLANTIC"],
+    ["MID_ATLANTIC_MID", "ATL_N_M"],
+    ["EQUATORIAL_ATLANTIC_WEST", "EQUATORIAL_ATLANTIC"],
+    ["EQUATORIAL_ATLANTIC", "SOUTH_ATLANTIC_MID"],
+    ["SOUTH_ATLANTIC_MID", "SOUTH_ATLANTIC_EAST"],
+    ["SOUTH_ATLANTIC_WEST", "SOUTH_ATLANTIC_MID"],
+    ["BRAZIL_COAST", "SOUTH_ATLANTIC_WEST"]
 ];
 
 const PORT_TO_WP: Record<string, keyof typeof MARITIME_WP> = {
