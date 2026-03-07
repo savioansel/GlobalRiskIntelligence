@@ -8,6 +8,7 @@ const Maritime = lazy(() => import("./pages/Maritime"));
 const Railway = lazy(() => import("./pages/Railway"));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const AICenter = lazy(() => import("./pages/AICenter"));
+const LiveTracking = lazy(() => import("./pages/LiveTracking"));
 
 const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 60_000 } } });
 
@@ -18,6 +19,7 @@ const NAV = [
   { to: "/railway", icon: "train", label: "Railway Risk" },
   { to: "/portfolio", icon: "business_center", label: "Portfolio" },
   { to: "/ai", icon: "smart_toy", label: "AI Center" },
+  { to: "/live-tracking", icon: "radar", label: "Live Tracking" },
 ];
 
 function Sidebar() {
@@ -108,6 +110,7 @@ export default function App() {
               <Route path="/railway" element={<Railway />} />
               <Route path="/portfolio" element={<Portfolio />} />
               <Route path="/ai" element={<AICenter />} />
+              <Route path="/live-tracking" element={<LiveTracking />} />
             </Routes>
           </Suspense>
         </div>
