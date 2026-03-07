@@ -115,37 +115,37 @@ async def analyze_maritime(req: MaritimeRequest):
          "description": "Speed dropped 4.5 kts below schedule near Strait of Hormuz."},
     ]
 
-    # Route comparison with realistic marine cargo rates
-    safe_score  = round(overall * 0.75, 1)
-    short_score = overall
-    # Real marine cargo rates: 0.1–0.5% standard, up to 1–2% high-risk
-    short_rate = min(0.10 + (short_score / 100 * 0.40), 1.5)  # 0.10–0.50%
-    safe_rate = min(0.10 + (safe_score / 100 * 0.28), 1.0)     # 0.10–0.38%
-    route_comparison = {
-        "shortest": {"score": short_score, "extra_days": 0, "premium_usd": round(req.cargo_value_usd * short_rate / 100, 0)},
-        "safest":   {"score": safe_score,  "extra_days": 4, "premium_usd": round(req.cargo_value_usd * safe_rate / 100, 0)},
+    # Cargo-type base rate modifiers (per IUMI/industry data)
+    _cargo_base_rates = {
+        "Container": 0.12, "Bulk Commodity": 0.10, "Crude Oil": 0.18,
+        "LNG/LPG": 0.20, "Hazardous Materials": 0.25, "General Cargo": 0.14,
+    }
+    # Vessel-type surcharges
+    _vessel_surcharges = {
+        "Oil Tanker": 0.03, "LNG Carrier": 0.04, "Bulk Carrier": 0.0,
+        "Container Ship": 0.0, "General Cargo": 0.01,
     }
 
     if db_data and db_data.get("base_rate_pct"):
         base_rate = float(db_data["base_rate_pct"])
-        risk_loading = float(db_data.get("risk_loading_pct", 0.0))
-        premium_usd = float(db_data.get("estimated_premium_usd", 0.0))
     else:
-        # Cargo-type base rate modifiers (per IUMI/industry data)
-        _cargo_base_rates = {
-            "Container": 0.12, "Bulk Commodity": 0.10, "Crude Oil": 0.18,
-            "LNG/LPG": 0.20, "Hazardous Materials": 0.25, "General Cargo": 0.14,
-        }
-        # Vessel-type surcharges
-        _vessel_surcharges = {
-            "Oil Tanker": 0.03, "LNG Carrier": 0.04, "Bulk Carrier": 0.0,
-            "Container Ship": 0.0, "General Cargo": 0.01,
-        }
         base_rate = _cargo_base_rates.get(req.cargo_type, 0.14)
         base_rate += _vessel_surcharges.get(req.vessel_type, 0.0)
-        risk_loading = round(overall / 100 * 0.40, 4)  # max ~0.40% at score=100
-        effective_rate = min(base_rate + risk_loading, 2.0)  # cap at 2% (high-risk max)
-        premium_usd = round(req.cargo_value_usd * effective_rate / 100, 0)
+        
+    risk_loading = round(overall / 100 * 0.40, 4)  # max ~0.40% at score=100
+    effective_rate = min(base_rate + risk_loading, 2.0)  # cap at 2% (high-risk max)
+    premium_usd = round(req.cargo_value_usd * effective_rate / 100, 0)
+
+    # Route comparison with realistic marine cargo rates
+    safe_score  = round(overall * 0.75, 1)
+    short_score = overall
+    # Real marine cargo rates: 0.1–0.5% standard, up to 1–2% high-risk
+    short_rate = min(base_rate + (short_score / 100 * 0.40), 1.5)
+    safe_rate = min(base_rate + (safe_score / 100 * 0.28), 1.0)
+    route_comparison = {
+        "shortest": {"score": short_score, "extra_days": 0, "premium_usd": round(req.cargo_value_usd * short_rate / 100, 0)},
+        "safest":   {"score": safe_score,  "extra_days": 4, "premium_usd": round(req.cargo_value_usd * safe_rate / 100, 0)},
+    }
 
     suggestions = [
         "Re-route via Cape of Good Hope — reduces risk score by ~18 pts (adds 4 days)",
