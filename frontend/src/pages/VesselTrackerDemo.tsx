@@ -193,9 +193,7 @@ export default function VesselTrackerDemo() {
   // Get MMSI from query params or default
   const defaultMMSI =
     new URL(window.location.href).searchParams.get("mmsi") || "777000002";
-  const [mmsi, setMmsi] = useState(defaultMMSI);
-  const [inputValue, setInputValue] = useState(mmsi);
-  const [forceDemoMode, setForceDemoMode] = useState(false);
+  const mmsi = defaultMMSI;
   const [autoPan, setAutoPan] = useState(true);
   const [sevFilter, setSevFilter] = useState<string>("ALL");
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
@@ -206,7 +204,7 @@ export default function VesselTrackerDemo() {
     defaultVesselName: `Vessel ${mmsi}`,
     startLat: 15.0,
     startLon: 42.5,
-    useDemoMode: forceDemoMode,
+    useDemoMode: false,
   });
 
   // Toast for new alerts
@@ -236,15 +234,6 @@ export default function VesselTrackerDemo() {
       setMapZoom(6);
     }
   }, [vessel, autoPan]);
-
-  // Handle MMSI input
-  const handleSetMmsi = () => {
-    const trimmed = inputValue.trim();
-    if (trimmed && trimmed !== mmsi) {
-      setMmsi(trimmed);
-      setMapCenter(null); // Reset map position
-    }
-  };
 
   // Filter alerts by severity
   const filteredAlerts = useMemo(() => {
@@ -287,8 +276,8 @@ export default function VesselTrackerDemo() {
           {connectionStatus === "connected"
             ? "CONNECTED"
             : connectionStatus === "demo"
-              ? "DEMO MODE"
-              : "CONNECTING…"}
+              ? "DEMO"
+              : "WAITING…"}
         </div>
       </header>
 
@@ -297,28 +286,6 @@ export default function VesselTrackerDemo() {
         {/* ── Controls ────────────────────────────────────────────────── */}
         <div className="bg-white rounded-lg border border-border-col shadow-sm p-4 space-y-3 flex-shrink-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* MMSI Input */}
-            <div>
-              <label className="block text-xs font-semibold text-text-muted mb-2">Vessel MMSI</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={inputValue}
-                  onChange={e => setInputValue(e.target.value)}
-                  onKeyPress={e => e.key === "Enter" && handleSetMmsi()}
-                  placeholder="Enter vessel MMSI..."
-                  className="flex-1 bg-gray-50 border border-border-col text-text-main px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm placeholder:text-text-muted/60"
-                />
-                <button
-                  onClick={handleSetMmsi}
-                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors text-sm"
-                >
-                  Track
-                </button>
-              </div>
-              <p className="text-xs text-text-muted mt-1">Current: {mmsi}</p>
-            </div>
-
             {/* Alert Filters */}
             <div>
               <label className="block text-xs font-semibold text-text-muted mb-2">Alert Filter</label>
@@ -343,13 +310,24 @@ export default function VesselTrackerDemo() {
               <label className="block text-xs font-semibold text-text-muted">Options</label>
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setForceDemoMode(!forceDemoMode)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${forceDemoMode
-                    ? "bg-purple-50 text-purple-700 border-purple-200"
-                    : "bg-gray-50 text-gray-600 border-border-col hover:bg-gray-100"
-                    }`}
+                  onClick={async () => {
+                    try {
+                      await fetch("http://localhost:8000/api/ais/start-demo", { method: "POST" });
+                    } catch (e) { console.error(e); }
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
                 >
-                  {forceDemoMode ? "🎮 Demo ON" : "Demo"}
+                  ▶ Start Demo
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await fetch("http://localhost:8000/api/ais/stop-demo", { method: "POST" });
+                    } catch (e) { console.error(e); }
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                >
+                  ⏹ Stop Demo
                 </button>
                 <button
                   onClick={() => setAutoPan(!autoPan)}
@@ -358,7 +336,7 @@ export default function VesselTrackerDemo() {
                     : "bg-gray-50 text-gray-600 border-border-col hover:bg-gray-100"
                     }`}
                 >
-                  {autoPan ? "📍 Pan ON" : "Pan"}
+                  {autoPan ? "Pan ON" : "Pan"}
                 </button>
               </div>
             </div>
@@ -533,11 +511,10 @@ export default function VesselTrackerDemo() {
               </div>
             ) : (
               <div className="bg-white rounded-lg border border-border-col shadow-sm p-8 flex items-center justify-center flex-shrink-0">
-                <p className="text-text-muted text-center">
-                  {forceDemoMode || connectionStatus === "demo"
-                    ? "Waiting for vessel data..."
-                    : "Enter a valid MMSI to start tracking"}
-                </p>
+                <div className="text-text-muted text-center flex flex-col items-center gap-3">
+                  <span className="ms animate-spin text-4xl text-gray-300">autorenew</span>
+                  <span>Waiting for demo vessel telemetry...</span>
+                </div>
               </div>
             )}
           </div>

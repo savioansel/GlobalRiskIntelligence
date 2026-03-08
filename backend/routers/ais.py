@@ -983,3 +983,41 @@ async def ais_subscribe(websocket: WebSocket):
         pass
     finally:
         _subscribers.discard(websocket)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── Remote Script Control ───────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+import subprocess
+import os
+import sys
+
+_demo_process = None
+
+@router.post("/start-demo")
+async def start_demo_script():
+    """Remotely starts the demo_compliance.py script."""
+    global _demo_process
+    if _demo_process is not None and _demo_process.poll() is None:
+        return {"status": "already_running"}
+    
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    script_path = os.path.join(project_root, "scripts", "demo_compliance.py")
+    
+    # Run the script in the background using the same Python executable (venv)
+    _demo_process = subprocess.Popen(
+        [sys.executable, script_path],
+        cwd=project_root
+    )
+    return {"status": "started"}
+
+@router.post("/stop-demo")
+async def stop_demo_script():
+    """Remotely kills the demo_compliance.py script."""
+    global _demo_process
+    if _demo_process is not None and _demo_process.poll() is None:
+        _demo_process.terminate()
+        _demo_process = None
+        return {"status": "stopped"}
+    return {"status": "not_running"}

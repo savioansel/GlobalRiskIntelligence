@@ -158,6 +158,13 @@ export function useDemoVesselTracker(config: DemoTrackerConfig): DemoTrackerResu
         wsUrl = `${protocol}//${wsUrl}`;
       }
 
+      // Close any existing connection before starting a new one
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch (e) { }
+      }
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -189,18 +196,11 @@ export function useDemoVesselTracker(config: DemoTrackerConfig): DemoTrackerResu
       ws.onclose = () => {
         if (unmounted) return;
         setConnected(false);
-        // Enter demo mode after failed connection attempt
-        if (retryRef.current === 0) {
-          setConnectionStatus("demo");
-          setDemoMode(true);
-          startDemo();
-        } else {
-          // Retry with exponential backoff
-          const delay = Math.min(1000 * Math.pow(2, retryRef.current), 30000);
-          retryRef.current++;
-          setConnectionStatus("idle");
-          reconnectTimer = setTimeout(startWebSocket, delay);
-        }
+        // Retry with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, retryRef.current), 30000);
+        retryRef.current++;
+        setConnectionStatus("idle");
+        reconnectTimer = setTimeout(startWebSocket, delay);
       };
     }
 
