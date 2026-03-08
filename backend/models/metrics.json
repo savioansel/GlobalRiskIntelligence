@@ -1,0 +1,20 @@
+{
+    "aviation": {
+        "mae": 1.685551306243211,
+        "mse": 4.473769232640921,
+        "r2": 0.9648923410070077,
+        "path": "models/aviation_ensemble.pkl"
+    },
+    "maritime": {
+        "mae": 1.6932138476884568,
+        "mse": 4.806121834634615,
+        "r2": 0.9371538519421468,
+        "path": "models/maritime_ensemble.pkl"
+    },
+    "railway": {
+        "mae": 1.6718451948765978,
+        "mse": 4.609581249893998,
+        "r2": 0.9494860927474212,
+        "path": "models/railway_ensemble.pkl"
+    }
+}

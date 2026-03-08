@@ -1,0 +1,66 @@
+{
+    "Aviation_1_Dubai_London": {
+        "description": "Conflict Zone Proximity (Dubai to London)",
+        "score": 32.6,
+        "risk_level": "ELEVATED",
+        "premium_usd": 3094200.0,
+        "premium_pct": 2.06,
+        "top_factors": [
+            "Conflict Zone Overflight",
+            "ATC Congestion"
+        ]
+    },
+    "Aviation_2_NY_LA": {
+        "description": "Standard Busy Route (NY to LA)",
+        "score": 35.5,
+        "risk_level": "ELEVATED",
+        "premium_usd": 2452800.0,
+        "premium_pct": 2.04,
+        "top_factors": [
+            "ATC Congestion"
+        ]
+    },
+    "Maritime_1_Mumbai_Rotterdam": {
+        "description": "Red Sea Threat (Mumbai to Rotterdam)",
+        "score": 26.4,
+        "risk_level": "LOW",
+        "premium_usd": 122800.0,
+        "premium_pct": 0.2456,
+        "top_factors": [
+            "Red Sea / Houthi Threat"
+        ]
+    },
+    "Maritime_2_Singapore_LA": {
+        "description": "Standard Route (Singapore to LA)",
+        "score": 53.2,
+        "risk_level": "ELEVATED",
+        "premium_usd": 338240.0,
+        "premium_pct": 0.42279999999999995,
+        "top_factors": [
+            "Red Sea / Houthi Threat",
+            "Adverse Weather",
+            "Port Congestion"
+        ]
+    },
+    "Railway_1_Howrah_Patna": {
+        "description": "Red Corridor & Flood Zone (Howrah to Patna)",
+        "score": 54.8,
+        "risk_level": "ELEVATED",
+        "premium_usd": 10316.0,
+        "premium_pct": 0.5158,
+        "top_factors": [
+            "Red Corridor Proximity",
+            "Monsoon Flooding"
+        ]
+    },
+    "Railway_2_Delhi_Mumbai": {
+        "description": "Standard Commute (Delhi to Mumbai)",
+        "score": 26.6,
+        "risk_level": "LOW",
+        "premium_usd": 14305.0,
+        "premium_pct": 0.2861,
+        "top_factors": [
+            "Standard Risk Profile"
+        ]
+    }
+}
