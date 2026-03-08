@@ -11,18 +11,7 @@ import { useAisSubscription } from "../hooks/useAisSubscription";
 import type { VesselData, AISAlertData } from "../hooks/useAisSubscription";
 import { getAisExposure } from "../api";
 
-// ── Zone data (inlined to avoid heavy RiskMap imports) ──────────────────────
-const ZONES = [
-    { name: "Strait of Hormuz", lat: 26.6, lng: 56.3, radiusKm: 250, color: "#ef4444", opacity: 0.18, type: "CRITICAL", reason: "US/Israel strikes on Iran — tanker traffic collapsed, GPS jamming 1,100+ ships" },
-    { name: "Red Sea / Bab el-Mandeb", lat: 15.0, lng: 42.5, radiusKm: 450, color: "#ef4444", opacity: 0.15, type: "CRITICAL", reason: "Houthi attacks ongoing, ceasefire fragile, vessels being targeted" },
-    { name: "Gulf of Aden", lat: 11.5, lng: 48.5, radiusKm: 380, color: "#ef4444", opacity: 0.15, type: "CRITICAL", reason: "Houthi + Somali piracy overlap, hijackings since late 2023" },
-    { name: "Black Sea", lat: 43.5, lng: 34.0, radiusKm: 300, color: "#f97316", opacity: 0.14, type: "HIGH", reason: "Ukraine-Russia conflict, drone strikes on tankers" },
-    { name: "Gulf of Guinea", lat: 2.0, lng: 5.0, radiusKm: 500, color: "#f97316", opacity: 0.12, type: "HIGH", reason: "Piracy, kidnapping for ransom" },
-    { name: "Strait of Malacca", lat: 3.0, lng: 100.0, radiusKm: 300, color: "#f97316", opacity: 0.14, type: "HIGH", reason: "Armed piracy incidents rising" },
-    { name: "South China Sea", lat: 12.0, lng: 114.0, radiusKm: 700, color: "#f59e0b", opacity: 0.12, type: "ELEVATED", reason: "Territorial disputes near Spratly Islands" },
-];
-
-// ── Severity Helpers ────────────────────────────────────────────────────────
+// ── Zone data is now streamed from the backend dynamically ─────────────────// ── Severity Helpers ────────────────────────────────────────────────────────
 const SEV_COLOR: Record<string, string> = {
     CRITICAL: "#ef4444", HIGH: "#f97316", MEDIUM: "#f59e0b", LOW: "#10b981",
 };
@@ -241,7 +230,7 @@ function ExposurePanel() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 export default function LiveTracking() {
-    const { vessels, alerts, connected, vesselCount } = useAisSubscription();
+    const { vessels, alerts, zones, connected, vesselCount } = useAisSubscription();
     const [sevFilter, setSevFilter] = useState<string>("ALL");
     const [panTarget, setPanTarget] = useState<[number, number] | null>(null);
 
@@ -337,12 +326,12 @@ export default function LiveTracking() {
                                 />
 
                                 {/* War Zones */}
-                                {ZONES.map(z => (
+                                {zones?.filter(z => z.active).map(z => (
                                     <Circle
                                         key={z.name}
-                                        center={[z.lat, z.lng]}
-                                        radius={z.radiusKm * 1000}
-                                        pathOptions={{ color: z.color, fillColor: z.color, fillOpacity: z.opacity, weight: 1.5, dashArray: "4 4" }}
+                                        center={[z.lat, z.lon]}
+                                        radius={z.radius_km * 1000}
+                                        pathOptions={{ color: z.color || "#ef4444", fillColor: z.color || "#ef4444", fillOpacity: z.opacity || 0.15, weight: 1.5, dashArray: "4 4" }}
                                     >
                                         <Popup className="font-sans text-sm" maxWidth={250}>
                                             <strong>{z.name}</strong><br />
@@ -422,28 +411,49 @@ export default function LiveTracking() {
 
                     <div className="lg:col-span-8 card p-4" style={{ maxHeight: 300 }}>
                         <h3 className="section-title mb-3">
-                            <span className="ms text-indigo-500">timeline</span>
-                            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-indigo-500">Event Timeline</span>
+                            <span className="ms text-indigo-500">policy</span>
+                            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-indigo-500">Coverage Lifecycle Events</span>
                         </h3>
                         <div className="overflow-y-auto space-y-1" style={{ maxHeight: 220 }}>
-                            {alerts.slice(0, 30).map((a, i) => (
-                                <div key={a.alert_id} className="flex items-start gap-3 py-1.5 px-2 rounded-lg hover:bg-gray-50 transition-colors">
-                                    <div className="flex flex-col items-center">
-                                        <div className="w-2.5 h-2.5 rounded-full border-2 mt-1" style={{
-                                            borderColor: SEV_COLOR[a.severity],
-                                            backgroundColor: i === 0 ? SEV_COLOR[a.severity] : "transparent",
-                                        }} />
-                                        {i < Math.min(alerts.length, 30) - 1 && <div className="w-px h-6 bg-gray-200 mt-1" />}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: SEV_COLOR[a.severity] }}>{TYPE_LABEL[a.type] || a.type}</span>
-                                            <span className="text-[9px] text-gray-400 font-mono">{new Date(a.timestamp).toLocaleTimeString()}</span>
+                            {alerts.slice(0, 30).map((a, i) => {
+                                const isCoverage = a.type === "policy_compliance";
+                                const statusColor = a.severity === "CRITICAL" ? "#ef4444" : a.severity === "HIGH" ? "#f97316" : a.severity === "MEDIUM" ? "#f59e0b" : "#3b82f6";
+
+                                return (
+                                    <div
+                                        key={a.alert_id}
+                                        onClick={() => {
+                                            if (a.location?.lat && a.location?.lon) {
+                                                setPanTarget([a.location.lat, a.location.lon]);
+                                            }
+                                        }}
+                                        className={`flex items-start gap-4 py-2.5 px-3 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer ${i < 3 ? 'bg-indigo-50/30' : ''}`}
+                                    >
+                                        <div className="flex flex-col items-center min-w-[20px]">
+                                            <div className={`w-3 h-3 rounded-full border-2 mt-1 ${isCoverage ? 'border-indigo-500' : ''}`} style={{
+                                                borderColor: isCoverage ? "#6366f1" : statusColor,
+                                                backgroundColor: i === 0 || isCoverage ? (isCoverage ? "#6366f1" : statusColor) : "transparent",
+                                            }} />
+                                            {i < Math.min(alerts.length, 30) - 1 && <div className="w-px h-8 bg-gray-200 mt-1" />}
                                         </div>
-                                        <p className="text-[11px] text-gray-600 truncate">{a.msg}</p>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-0.5">
+                                                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: isCoverage ? "#4f46e5" : statusColor }}>
+                                                    {isCoverage ? "COVERAGE UPDATE" : (TYPE_LABEL[a.type] || a.type)}
+                                                </span>
+                                                <span className="text-[10px] text-gray-400 font-mono">{new Date(a.timestamp).toLocaleTimeString()}</span>
+                                                {isCoverage && a.severity === "CRITICAL" && (
+                                                    <span className="ml-auto text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">BREACH</span>
+                                                )}
+                                                {isCoverage && a.severity === "HIGH" && (
+                                                    <span className="ml-auto text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">WARNING</span>
+                                                )}
+                                            </div>
+                                            <p className={`text-[12px] ${isCoverage ? 'text-gray-800 font-medium' : 'text-gray-600'} leading-snug`}>{a.msg}</p>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                             {alerts.length === 0 && (
                                 <p className="text-sm text-gray-400 text-center py-8">Timeline will populate as events occur</p>
                             )}

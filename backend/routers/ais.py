@@ -1,5 +1,6 @@
 """
 AIS Live Tracking Router — Real-time vessel monitoring, alert engine, WebSocket pub/sub.
+Integrates Policy Compliance and Coverage Lifecycle Engine for insurance underwriting.
 """
 from __future__ import annotations
 
@@ -13,17 +14,23 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from backend.services.compliance_engine import ComplianceEngine
+from backend.models.policy import CoverageStatus, CoverageEvent
+
 router = APIRouter()
 
-# ── War-risk zone polygons (named zones matching MARITIME_ZONES in frontend) ──
+# Initialize global compliance engine
+_compliance_engine = ComplianceEngine()
+
+# ── War-risk zone polygons (Dynamic state streamed to UI) ────────────────
 WAR_ZONES = [
-    {"name": "Red Sea / Bab el-Mandeb", "lat": 15.0, "lon": 42.5, "radius_km": 450},
-    {"name": "Strait of Hormuz",        "lat": 26.6, "lon": 56.3, "radius_km": 250},
-    {"name": "Gulf of Aden",            "lat": 11.5, "lon": 48.5, "radius_km": 380},
-    {"name": "Black Sea",               "lat": 43.5, "lon": 34.0, "radius_km": 300},
-    {"name": "Gulf of Guinea",          "lat":  2.0, "lon":  5.0, "radius_km": 500},
-    {"name": "Strait of Malacca",       "lat":  3.0, "lon": 100.0, "radius_km": 300},
-    {"name": "South China Sea",         "lat": 12.0, "lon": 114.0, "radius_km": 700},
+    {"name": "Red Sea / Bab el-Mandeb", "lat": 15.0, "lon": 42.5, "radius_km": 450, "color": "#ef4444", "opacity": 0.15, "type": "CRITICAL", "reason": "Houthi attacks ongoing, ceasefire fragile, vessels being targeted", "active": True},
+    {"name": "Strait of Hormuz",        "lat": 26.6, "lon": 56.3, "radius_km": 250, "color": "#ef4444", "opacity": 0.18, "type": "CRITICAL", "reason": "US/Israel strikes on Iran — tanker traffic collapsed", "active": True},
+    {"name": "Gulf of Aden",            "lat": 11.5, "lon": 48.5, "radius_km": 380, "color": "#ef4444", "opacity": 0.15, "type": "CRITICAL", "reason": "Houthi + Somali piracy overlap, hijackings", "active": True},
+    {"name": "Black Sea",               "lat": 43.5, "lon": 34.0, "radius_km": 300, "color": "#f97316", "opacity": 0.14, "type": "HIGH",     "reason": "Ukraine-Russia conflict, drone strikes on tankers", "active": True},
+    {"name": "Gulf of Guinea",          "lat":  2.0, "lon":  5.0, "radius_km": 500, "color": "#f97316", "opacity": 0.12, "type": "HIGH",     "reason": "Piracy, kidnapping for ransom", "active": True},
+    {"name": "Strait of Malacca",       "lat":  3.0, "lon": 100.0, "radius_km": 300, "color": "#f97316", "opacity": 0.14, "type": "HIGH",    "reason": "Armed piracy incidents rising — strait closure imminent", "active": False},
+    {"name": "South China Sea",         "lat": 12.0, "lon": 114.0, "radius_km": 700, "color": "#f59e0b", "opacity": 0.12, "type": "ELEVATED", "reason": "Territorial disputes near Spratly Islands", "active": True},
 ]
 
 # ── Known ports (for emergency rule — avoid false positives near port) ────────
@@ -97,6 +104,7 @@ class VesselState:
         "mmsi", "vessel_name", "lat", "lon", "speed_kn", "course", "heading",
         "status", "voyage_id", "destination", "last_update",
         "ping_history", "voyage_context", "next_policy_flag",
+        "coverage_status", "coverage_id", "coverage_reason",
     )
 
     def __init__(self, ping: AISPing):
@@ -115,6 +123,10 @@ class VesselState:
         self.ping_history.append(ping)
         self.voyage_context: Optional[dict] = None
         self.next_policy_flag = False
+        # Coverage tracking
+        self.coverage_status: str = "ACTIVE"  # ACTIVE|WARNING|BREACH|VOID
+        self.coverage_id: str = ""
+        self.coverage_reason: str = ""
 
     def update(self, ping: AISPing):
         self.lat = ping.lat
@@ -140,6 +152,9 @@ class VesselState:
             "last_update": self.last_update,
             "next_policy_flag": self.next_policy_flag,
             "voyage_context": self.voyage_context,
+            "coverage_status": self.coverage_status.value if hasattr(self.coverage_status, 'value') else str(self.coverage_status),
+            "coverage_id": self.coverage_id,
+            "coverage_reason": self.coverage_reason,
         }
 
 
@@ -202,9 +217,9 @@ def _in_zone(lat: float, lon: float, zone: dict) -> bool:
 
 
 def _get_zone_name(lat: float, lon: float) -> Optional[str]:
-    """Return the name of the war zone the point falls in, or None."""
+    """Return the name of the active war zone the point falls in, or None."""
     for z in WAR_ZONES:
-        if _in_zone(lat, lon, z):
+        if z.get("active", True) and _in_zone(lat, lon, z):
             return z["name"]
     return None
 
@@ -236,16 +251,34 @@ def _evaluate_rules(ping: AISPing, vessel: VesselState) -> list[AISAlert]:
         if zone_name:
             # Only fire once per vessel per zone (check if already alerted)
             existing = [a for a in _alerts if a.type == "war_risk" and a.mmsi == ping.mmsi
-                        and zone_name in a.msg]
+                        and zone_name in a.msg and "entered" in a.msg.lower()]
             if not existing:
                 premium_adj = round(2.0 + (cargo_value / 100_000_000) * 1.5, 1) if cargo_value else 3.0
                 alerts.append(AISAlert(
                     type="war_risk", mmsi=ping.mmsi, voyage_id=ping.voyage_id,
-                    severity="HIGH",
+                    severity="CRITICAL",
                     msg=f"Vessel {ping.vessel_name or ping.mmsi} entered {zone_name} war zone — recommend +{premium_adj}% war surcharge",
                     location={"lat": ping.lat, "lon": ping.lon},
                     evidence=evidence,
                 ))
+
+    # ── Rule 1.5: Approaching War Risk Zone ──────────────────────────────
+    if ping.status == "underway" and not zone_name:
+        for z in WAR_ZONES:
+            if not z.get("active", True):
+                continue
+            dist = _haversine_km(ping.lat, ping.lon, z["lat"], z["lon"])
+            if z["radius_km"] < dist <= z["radius_km"] + 500.0:
+                existing_appr = [a for a in _alerts if a.type == "war_risk" and a.mmsi == ping.mmsi
+                                 and z["name"] in a.msg and "approaching" in a.msg.lower()]
+                if not existing_appr:
+                    alerts.append(AISAlert(
+                        type="war_risk", mmsi=ping.mmsi, voyage_id=ping.voyage_id,
+                        severity="HIGH",
+                        msg=f"Vessel {ping.vessel_name or ping.mmsi} approaching {z['name']} war zone ({(dist - z['radius_km']):.0f}km away) — consider policy review",
+                        location={"lat": ping.lat, "lon": ping.lon},
+                        evidence=evidence,
+                    ))
 
     # ── Rule 2: Deviation from declared route ─────────────────────────────
     if declared_route and len(declared_route) >= 2 and ping.status == "underway":
@@ -368,6 +401,25 @@ def _evaluate_rules(ping: AISPing, vessel: VesselState) -> list[AISAlert]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ── Helper Functions ─────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _create_alert_from_coverage_event(event: CoverageEvent) -> AISAlert:
+    """Convert a CoverageEvent to an AISAlert for uniform alert handling."""
+    return AISAlert(
+        alert_id=event.event_id,
+        type="policy_compliance",
+        mmsi=event.mmsi,
+        voyage_id=event.voyage_id,
+        severity=event.severity,
+        msg=event.msg,
+        timestamp=event.timestamp,
+        location=event.location,
+        evidence=event.evidence,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ── WebSocket Broadcasting ───────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -391,7 +443,7 @@ async def _broadcast(message: dict):
 
 @router.post("/ping")
 async def ingest_ping(ping: AISPing):
-    """Ingest an AIS ping, update vessel state, run alert rules, broadcast."""
+    """Ingest an AIS ping, update vessel state, run alert rules, evaluate policy compliance, broadcast."""
     # Store ping
     _pings.append(ping)
 
@@ -407,6 +459,69 @@ async def ingest_ping(ping: AISPing):
     if ping.voyage_id and ping.voyage_id in _voyages:
         vessel.voyage_context = _voyages[ping.voyage_id]
 
+    # Background traffic only updates position on the map, no alerts/compliance
+    if ping.extra.get("is_background"):
+        await _broadcast({
+            "event": "vessel.update",
+            "data": vessel.to_dict(),
+        })
+        return {
+            "status": "ok",
+            "vessel": ping.mmsi,
+            "alerts_generated": 0,
+            "alert_ids": [],
+            "coverage_event": None,
+        }
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # POLICY COMPLIANCE EVALUATION
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    # Register vessel policy if not already registered
+    if ping.mmsi not in _compliance_engine.policies:
+        _compliance_engine.register_vessel_policy(ping.mmsi)
+    
+    # Initiate coverage if no voyage-level coverage exists
+    if ping.voyage_id and ping.voyage_id not in _compliance_engine.coverage_states:
+        _compliance_engine.initiate_coverage(ping.voyage_id, ping.mmsi, ping.extra.get("policy_id", ""))
+    
+    # Build vessel context for compliance evaluation
+    vessel_context = {}
+    if vessel.voyage_context:
+        vessel_context["declared_route"] = vessel.voyage_context.get("declared_route", [])
+        vessel_context["declared_ports"] = vessel.voyage_context.get("destination", "").split(",") if vessel.voyage_context.get("destination") else []
+    
+    # Check war zone and add to context
+    zone_name = _get_zone_name(ping.lat, ping.lon)
+    if zone_name:
+        vessel_context["current_war_zone"] = zone_name
+    
+    # Evaluate compliance for this ping
+    coverage_event = None
+    if ping.voyage_id:
+        coverage_event = _compliance_engine.evaluate_ping(
+            voyage_id=ping.voyage_id,
+            mmsi=ping.mmsi,
+            lat=ping.lat,
+            lon=ping.lon,
+            speed_kn=ping.speed_kn,
+            timestamp=ping.timestamp,
+            vessel_context=vessel_context,
+            known_ports=KNOWN_PORTS,
+        )
+    
+    # Update vessel coverage status from engine state
+    if ping.voyage_id:
+        coverage_state = _compliance_engine.get_coverage_state(ping.voyage_id)
+        if coverage_state:
+            vessel.coverage_status = coverage_state.status
+            vessel.coverage_id = coverage_state.coverage_id
+            vessel.coverage_reason = str(coverage_state.last_breach_reason) if coverage_state.last_breach_reason else ""
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # ALERT GENERATION
+    # ─────────────────────────────────────────────────────────────────────────
+    
     # Run alert rules
     new_alerts = _evaluate_rules(ping, vessel)
     for alert in new_alerts:
@@ -422,17 +537,49 @@ async def ingest_ping(ping: AISPing):
             "type": alert.type,
         })
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # BROADCAST UPDATES
+    # ─────────────────────────────────────────────────────────────────────────
+
     # Broadcast vessel update
     await _broadcast({
         "event": "vessel.update",
         "data": vessel.to_dict(),
     })
 
-    # Broadcast each alert
+    # Broadcast each operational alert
     for alert in new_alerts:
         await _broadcast({
             "event": "alert.create",
             "data": alert.model_dump(),
+        })
+    
+    # Broadcast coverage event (if coverage status changed)
+    if coverage_event:
+        _alerts.append(_create_alert_from_coverage_event(coverage_event))
+        await _broadcast({
+            "event": "coverage.status_change",
+            "data": {
+                "event_id": coverage_event.event_id,
+                "voyage_id": coverage_event.voyage_id,
+                "mmsi": coverage_event.mmsi,
+                "previous_status": coverage_event.previous_status,
+                "new_status": coverage_event.new_status,
+                "severity": coverage_event.severity,
+                "msg": coverage_event.msg,
+                "timestamp": coverage_event.timestamp,
+                "location": coverage_event.location,
+                "evidence": coverage_event.evidence,
+            },
+        })
+        # Also add to intel feed
+        ais_intel_items.append({
+            "domain": "SEA",
+            "severity": coverage_event.severity,
+            "time": datetime.now(timezone.utc).strftime("%H:%M UTC"),
+            "text": f"[COVERAGE] {coverage_event.msg}",
+            "alert_id": coverage_event.event_id,
+            "type": "policy_compliance",
         })
 
     return {
@@ -440,6 +587,7 @@ async def ingest_ping(ping: AISPing):
         "vessel": ping.mmsi,
         "alerts_generated": len(new_alerts),
         "alert_ids": [a.alert_id for a in new_alerts],
+        "coverage_event": coverage_event.event_id if coverage_event else None,
     }
 
 
@@ -476,13 +624,80 @@ async def get_voyages():
     return {"voyages": list(_voyages.values())}
 
 
+@router.post("/reroute")
+async def reroute_vessel(mmsi: str):
+    """
+    Compute an alternative safe route for a vessel from its current position
+    to its registered destination, using the searoute library.
+    Broadcasts the new route via WebSocket as a 'reroute' event.
+    """
+    import json
+    try:
+        import searoute as sr
+    except ImportError:
+        return {"error": "searoute library not installed"}
+
+    vessel = _vessels.get(mmsi)
+    if not vessel:
+        return {"error": f"Vessel {mmsi} not found"}
+
+    voyage_ctx = vessel.voyage_context
+    if not voyage_ctx:
+        return {"error": "No voyage context for vessel"}
+
+    # Get destination coords from waypoints of the declared route
+    declared_route = voyage_ctx.get("declared_route", [])
+    if len(declared_route) < 2:
+        return {"error": "Declared route has insufficient waypoints"}
+
+    # Use the last waypoint of the declared route as destination
+    dest = declared_route[-1]  # [lat, lon]
+
+    try:
+        # current position as starting point, destination as end
+        # searoute expects [lon, lat] format
+        result = sr.searoute(
+            [vessel.lon, vessel.lat],
+            [dest[1], dest[0]],
+        )
+        waypoints = [(p[1], p[0]) for p in result["geometry"]["coordinates"]]  # [(lat, lon), ...]
+        route_coords = [[lat, lon] for lat, lon in waypoints]
+
+        # Broadcast the new safe route to all subscribers
+        msg = json.dumps({
+            "event": "reroute",
+            "data": {
+                "mmsi": mmsi,
+                "vessel_name": vessel.vessel_name,
+                "route": route_coords,
+                "reason": "Alternative safe route computed — avoids active risk zones",
+            }
+        })
+        for ws in list(_subscribers):
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                continue
+
+        return {
+            "status": "ok",
+            "mmsi": mmsi,
+            "waypoints": len(route_coords),
+            "route": route_coords[:5],  # abbreviated in response
+        }
+    except Exception as e:
+        return {"error": f"Route calculation failed: {e}"}
+
+
+
 @router.get("/exposure")
 async def get_exposure():
     """Return portfolio exposure aggregated by zone."""
     # Build zone buckets
     zone_data: dict[str, dict] = {}
     for z in WAR_ZONES:
-        zone_data[z["name"]] = {"zone": z["name"], "vessel_count": 0, "cargo_usd": 0, "alert_count": 0, "mmsis": []}
+        if z.get("active", True):
+            zone_data[z["name"]] = {"zone": z["name"], "vessel_count": 0, "cargo_usd": 0, "alert_count": 0, "mmsis": []}
 
     # Count vessels per zone
     for mmsi, vessel in _vessels.items():
@@ -505,6 +720,58 @@ async def get_exposure():
     return {"exposure": active_zones}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ── Policy Compliance & Coverage Endpoints ──────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/coverage/state/{voyage_id}")
+async def get_coverage_state(voyage_id: str):
+    """Get current coverage state for a voyage."""
+    coverage = _compliance_engine.get_coverage_state(voyage_id)
+    if not coverage:
+        return {"error": "Coverage not tracked for this voyage", "status": "ACTIVE"}
+    return {"coverage": coverage.model_dump()}
+
+
+@router.get("/coverage/all")
+async def get_all_coverage_states():
+    """Get all coverage states across all voyages."""
+    return {
+        "coverage_states": [cs.model_dump() for cs in _compliance_engine.coverage_states.values()]
+    }
+
+
+@router.post("/coverage/initiate")
+async def initiate_voyage_coverage(voyage_id: str, mmsi: str, policy_id: str = ""):
+    """Initiate coverage tracking for a new voyage."""
+    coverage = _compliance_engine.initiate_coverage(voyage_id, mmsi, policy_id)
+    return {"coverage": coverage.model_dump()}
+
+
+@router.get("/coverage/by_mmsi/{mmsi}")
+async def get_coverage_by_vessel(mmsi: str):
+    """Get all coverage states for a specific vessel (across all voyages)."""
+    vessel_coverage = [
+        cs.model_dump() for cs in _compliance_engine.coverage_states.values()
+        if cs.mmsi == mmsi
+    ]
+    return {"coverage_states": vessel_coverage}
+
+
+@router.get("/alerts/policy-compliance")
+async def get_compliance_alerts(limit: int = 50):
+    """Get only policy compliance alerts."""
+    compliance_alerts = [a for a in _alerts if a.type == "policy_compliance"]
+    return {"alerts": [a.model_dump() for a in compliance_alerts[-limit:]]}
+
+
+@router.get("/alerts/by_mmsi/{mmsi}")
+async def get_alerts_by_vessel(mmsi: str, limit: int = 50):
+    """Get all alerts for a specific vessel."""
+    vessel_alerts = [a for a in _alerts if a.mmsi == mmsi]
+    return {"alerts": [a.model_dump() for a in vessel_alerts[-limit:]]}
+
+
 @router.post("/reset")
 async def reset_state():
     """Reset all in-memory state (for testing/demo)."""
@@ -513,7 +780,171 @@ async def reset_state():
     _alerts.clear()
     _voyages.clear()
     ais_intel_items.clear()
+    _compliance_engine.reset_all()
+    # Reset zones to default (Strait of Malacca inactive for demo)
+    for z in WAR_ZONES:
+        if "Strait of Malacca" in z["name"]:
+            z["active"] = False
+        else:
+            z["active"] = True
     return {"status": "reset"}
+
+@router.post("/zones/toggle")
+async def toggle_zone(zone_name: str):
+    """Toggle the active state of a risk zone by name."""
+    import json
+    found = False
+    for z in WAR_ZONES:
+        if z["name"] == zone_name:
+            z["active"] = not z.get("active", True)
+            found = True
+            break
+    
+    if found:
+        toggled_zone = next((z for z in WAR_ZONES if z["name"] == zone_name), None)
+        is_now_active = toggled_zone.get("active", True) if toggled_zone else False
+
+        # Broadcast the updated zones to all websocket clients
+        async def _do_broadcast():
+            import json
+            msg = json.dumps({
+                "event": "zones_update",
+                "data": {"zones": WAR_ZONES}
+            })
+            for ws in list(_subscribers):
+                try:
+                    await ws.send_text(msg)
+                except Exception:
+                    continue
+
+            # If this zone was just activated, generate immediate alerts for vessels near it
+            if is_now_active and toggled_zone:
+                z = toggled_zone
+                for vessel in _vessels.values():
+                    dist = _haversine_km(vessel.lat, vessel.lon, float(z["lat"]), float(z["lon"]))
+                    if dist <= float(z["radius_km"]) + 1200.0:  # within 1200km to catch all approaching/inside
+                        # Determine alert severity and message
+                        if dist <= float(z["radius_km"]):
+                            severity = "CRITICAL"
+                            alert_msg_text = f"⚠️ RISK ZONE ACTIVATED — Vessel {vessel.vessel_name or vessel.mmsi} is NOW INSIDE {z['name']} war zone — IMMEDIATE policy review required"
+                        else:
+                            severity = "HIGH"
+                            alert_msg_text = f"🚨 NEW RISK ZONE AHEAD — Vessel {vessel.vessel_name or vessel.mmsi} is {(dist - float(z['radius_km'])):.0f}km from newly activated {z['name']} war zone — review policy now"
+
+                        alert = AISAlert(
+                            type="war_risk",
+                            mmsi=vessel.mmsi,
+                            voyage_id=vessel.voyage_id or "",
+                            severity=severity,
+                            msg=alert_msg_text,
+                            location={"lat": vessel.lat, "lon": vessel.lon},
+                            evidence=[],
+                        )
+                        _alerts.append(alert)
+                        ais_intel_items.append({
+                            "domain": "SEA",
+                            "severity": severity,
+                            "time": datetime.now(timezone.utc).strftime("%H:%M UTC"),
+                            "text": alert.msg,
+                            "alert_id": alert.alert_id,
+                            "type": alert.type,
+                        })
+                        broadcast_alert_msg = json.dumps({"event": "alert.create", "data": alert.model_dump()})
+                        for ws2 in list(_subscribers):
+                            try:
+                                await ws2.send_text(broadcast_alert_msg)
+                            except Exception:
+                                continue
+
+                        # Auto-compute zone-AVOIDING alternative route for this vessel
+                        print(f"  [REROUTE] Computing safe route for vessel {vessel.mmsi} (dist={dist:.0f}km from zone)")
+                        try:
+                            import searoute as sr
+
+                            # Zone bypass waypoints: points that lie safely OUTSIDE each zone,
+                            # forcing the multi-leg route to detour around the blocked area.
+                            ZONE_BYPASS_WAYPOINTS: dict[str, list[float]] = {
+                                "Strait of Malacca": [105.87, -6.10],  # Sunda Strait (between Java & Sumatra) — natural bypass
+                                "Red Sea":           [43.15, 11.60],   # Gulf of Aden south of Bab el-Mandeb
+                                "Strait of Hormuz":  [58.59, 23.58],   # Muscat, Oman — safe port outside the Gulf
+                                "Black Sea":         [29.00, 41.00],   # Istanbul strait area bypass
+                                "Gulf of Aden":      [45.00, 11.00],   # South of Gulf of Aden
+                                "Bab el-Mandeb":     [43.50, 11.00],   # South of Bab el-Mandeb
+                            }
+
+                            voyage_ctx = vessel.voyage_context
+                            declared_route = voyage_ctx.get("declared_route", []) if voyage_ctx else []
+                            zone_name_key = str(z.get("name", ""))
+
+                            if len(declared_route) >= 2 and zone_name_key in ZONE_BYPASS_WAYPOINTS:
+                                bypass_lonlat = ZONE_BYPASS_WAYPOINTS[zone_name_key]  # [lon, lat]
+                                bypass_lat, bypass_lon = bypass_lonlat[1], bypass_lonlat[0]
+
+                                dest = declared_route[-1]  # [lat, lon]
+                                dest_lon, dest_lat = float(dest[1]), float(dest[0])
+
+                                print(f"  [REROUTE] Leg 1: ({vessel.lat:.2f},{vessel.lon:.2f}) → bypass ({bypass_lat:.2f},{bypass_lon:.2f})")
+                                # Leg 1: current position → bypass waypoint
+                                leg1 = sr.searoute(
+                                    [vessel.lon, vessel.lat],
+                                    [bypass_lon, bypass_lat],
+                                )
+                                leg1_coords = [[p[1], p[0]] for p in leg1["geometry"]["coordinates"]]
+
+                                print(f"  [REROUTE] Leg 2: bypass → dest ({dest_lat:.2f},{dest_lon:.2f})")
+                                # Leg 2: bypass waypoint → original destination
+                                leg2 = sr.searoute(
+                                    [bypass_lon, bypass_lat],
+                                    [dest_lon, dest_lat],
+                                )
+                                leg2_coords = [[p[1], p[0]] for p in leg2["geometry"]["coordinates"]]
+
+                                # Combine legs (drop duplicate joining point)
+                                route_coords = leg1_coords + leg2_coords[1:]
+                                print(f"  [REROUTE] Computed {len(route_coords)} total waypoints for {vessel.mmsi}")
+
+                                reroute_msg = json.dumps({
+                                    "event": "reroute",
+                                    "data": {
+                                        "mmsi": vessel.mmsi,
+                                        "vessel_name": vessel.vessel_name,
+                                        "route": route_coords,
+                                        "reason": f"⚡ Auto-rerouted via {ZONE_BYPASS_WAYPOINTS[zone_name_key]} — avoids {zone_name_key} risk zone",
+                                    }
+                                })
+                                for ws3 in list(_subscribers):
+                                    try:
+                                        await ws3.send_text(reroute_msg)
+                                    except Exception:
+                                        continue
+                            elif len(declared_route) >= 2:
+                                # Fallback: direct route even without a specific bypass
+                                dest = declared_route[-1]
+                                result = sr.searoute([vessel.lon, vessel.lat], [float(dest[1]), float(dest[0])])
+                                route_coords = [[p[1], p[0]] for p in result["geometry"]["coordinates"]]
+                                reroute_msg = json.dumps({
+                                    "event": "reroute",
+                                    "data": {
+                                        "mmsi": vessel.mmsi,
+                                        "vessel_name": vessel.vessel_name,
+                                        "route": route_coords,
+                                        "reason": f"⚡ Alternative route — {zone_name_key} risk zone active",
+                                    }
+                                })
+                                for ws3 in list(_subscribers):
+                                    try:
+                                        await ws3.send_text(reroute_msg)
+                                    except Exception:
+                                        continue
+                            else:
+                                print(f"  [REROUTE] Skipped — no declared route for {vessel.mmsi}")
+                        except Exception as reroute_err:
+                            print(f"  [REROUTE ERROR] {vessel.mmsi}: {reroute_err}")
+
+        asyncio.create_task(_do_broadcast())
+        return {"status": "toggled"}
+    return {"error": "Zone not found"}, 404
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -533,6 +964,7 @@ async def ais_subscribe(websocket: WebSocket):
             "data": {
                 "vessels": [v.to_dict() for v in _vessels.values()],
                 "alerts": [a.model_dump() for a in _alerts[-50:]],
+                "zones": WAR_ZONES,
             },
         }))
         # Keep connection alive — listen for client messages / disconnects

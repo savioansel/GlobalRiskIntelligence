@@ -148,7 +148,15 @@ export default function Maritime() {
                             {(["shortest", "safest"] as const).map(k => {
                                 const r = result.route_comparison[k];
                                 return (
-                                    <div key={k} className={`p-3 rounded-xl border mb-3 ${form.route_preference === k ? "border-primary bg-primary/5" : "border-border-col bg-gray-50/50"}`}>
+                                    <div key={k}
+                                        onClick={() => {
+                                            if (form.route_preference !== k) {
+                                                upd("route_preference", k);
+                                                m.mutate({ ...form, route_preference: k });
+                                                setOptimisedScore(null);
+                                            }
+                                        }}
+                                        className={`p-3 rounded-xl border mb-3 cursor-pointer transition-colors ${form.route_preference === k ? "border-primary bg-primary/5" : "border-border-col bg-gray-50/50 hover:bg-gray-100/50"}`}>
                                         <div className="flex justify-between items-center mb-1">
                                             <span className="text-sm font-semibold capitalize text-text-main">{k}</span>
                                             <span className="font-mono text-sm text-rose-600">{r.score.toFixed(0)} pts</span>

@@ -9,6 +9,7 @@ const Railway = lazy(() => import("./pages/Railway"));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const AICenter = lazy(() => import("./pages/AICenter"));
 const LiveTracking = lazy(() => import("./pages/LiveTracking"));
+const VesselTrackerDemo = lazy(() => import("./pages/VesselTrackerDemo"));
 
 const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 60_000 } } });
 
@@ -93,27 +94,37 @@ export default function App() {
   return (
     <QueryClientProvider client={qc}>
       <BrowserRouter>
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <Suspense fallback={
-            <div className="flex-1 flex items-center justify-center bg-bg-app">
-              <div className="flex flex-col items-center gap-3">
-                <span className="ms text-primary text-4xl animate-spin">autorenew</span>
-                <p className="text-text-muted text-sm animate-pulse">Loading module...</p>
+        <Routes>
+          {/* Standalone vessel tracker app */}
+          <Route path="/track" element={<VesselTrackerDemo />} />
+          {/* Main application */}
+          <Route
+            path="*"
+            element={
+              <div className="flex h-screen overflow-hidden">
+                <Sidebar />
+                <Suspense fallback={
+                  <div className="flex-1 flex items-center justify-center bg-bg-app">
+                    <div className="flex flex-col items-center gap-3">
+                      <span className="ms text-primary text-4xl animate-spin">autorenew</span>
+                      <p className="text-text-muted text-sm animate-pulse">Loading module...</p>
+                    </div>
+                  </div>
+                }>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/aviation" element={<Aviation />} />
+                    <Route path="/maritime" element={<Maritime />} />
+                    <Route path="/railway" element={<Railway />} />
+                    <Route path="/portfolio" element={<Portfolio />} />
+                    <Route path="/ai" element={<AICenter />} />
+                    <Route path="/live-tracking" element={<LiveTracking />} />
+                  </Routes>
+                </Suspense>
               </div>
-            </div>
-          }>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/aviation" element={<Aviation />} />
-              <Route path="/maritime" element={<Maritime />} />
-              <Route path="/railway" element={<Railway />} />
-              <Route path="/portfolio" element={<Portfolio />} />
-              <Route path="/ai" element={<AICenter />} />
-              <Route path="/live-tracking" element={<LiveTracking />} />
-            </Routes>
-          </Suspense>
-        </div>
+            }
+          />
+        </Routes>
         <Toaster position="top-right" />
       </BrowserRouter>
     </QueryClientProvider>

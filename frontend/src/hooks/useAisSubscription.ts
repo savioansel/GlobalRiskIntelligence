@@ -37,6 +37,7 @@ export interface AISAlertData {
 interface AisSubscriptionResult {
     vessels: Map<string, VesselData>;
     alerts: AISAlertData[];
+    zones: any[];
     connected: boolean;
     vesselCount: number;
     error: string | null;
@@ -49,17 +50,12 @@ export function useAisSubscription(): AisSubscriptionResult {
     const vesselsRef = useRef<Map<string, VesselData>>(new Map());
     const [vesselCount, setVesselCount] = useState(0);
     const [alerts, setAlerts] = useState<AISAlertData[]>([]);
+    const [zones, setZones] = useState<any[]>([]);
     const [connected, setConnected] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const retryRef = useRef(0);
     const listenersRef = useRef<Set<() => void>>(new Set());
-
-    // Vessel update listeners (for map component to subscribe to position updates)
-    const onVesselUpdate = useCallback((cb: () => void) => {
-        listenersRef.current.add(cb);
-        return () => listenersRef.current.delete(cb);
-    }, []);
 
     const notifyListeners = useCallback(() => {
         listenersRef.current.forEach(cb => cb());
@@ -71,7 +67,6 @@ export function useAisSubscription(): AisSubscriptionResult {
 
         function connect() {
             if (unmounted) return;
-            const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
             const apiBase = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
             const wsUrl = apiBase.replace(/^http/, "ws") + "/api/ais/subscribe";
 
@@ -99,6 +94,10 @@ export function useAisSubscription(): AisSubscriptionResult {
                         vesselsRef.current = map;
                         setVesselCount(map.size);
                         setAlerts(as_);
+                        setZones(msg.data?.zones || []);
+                        notifyListeners();
+                    } else if (msg.event === "zones_update") {
+                        setZones(msg.data?.zones || []);
                         notifyListeners();
                     } else if (msg.event === "vessel.update") {
                         const v = msg.data as VesselData;
@@ -144,6 +143,7 @@ export function useAisSubscription(): AisSubscriptionResult {
     return {
         vessels: vesselsRef.current,
         alerts,
+        zones,
         connected,
         vesselCount,
         error,
