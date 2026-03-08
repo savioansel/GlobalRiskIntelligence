@@ -311,8 +311,9 @@ export default function VesselTrackerDemo() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={async () => {
+                    const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
                     try {
-                      await fetch("http://localhost:8000/api/ais/start-demo", { method: "POST" });
+                      await fetch(`${apiBase}/api/ais/start-demo`, { method: "POST" });
                     } catch (e) { console.error(e); }
                   }}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
@@ -321,8 +322,9 @@ export default function VesselTrackerDemo() {
                 </button>
                 <button
                   onClick={async () => {
+                    const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
                     try {
-                      await fetch("http://localhost:8000/api/ais/stop-demo", { method: "POST" });
+                      await fetch(`${apiBase}/api/ais/stop-demo`, { method: "POST" });
                     } catch (e) { console.error(e); }
                   }}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border bg-red-50 text-red-700 border-red-200 hover:bg-red-100"

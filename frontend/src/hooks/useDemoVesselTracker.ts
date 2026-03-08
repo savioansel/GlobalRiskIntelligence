@@ -148,10 +148,13 @@ export function useDemoVesselTracker(config: DemoTrackerConfig): DemoTrackerResu
       setConnectionStatus("connecting");
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const defaultWsUrl = apiBase.replace(/^http/, "ws") + "/api/ais/subscribe";
+
       let wsUrl =
         new URL(window.location.href).searchParams.get("ws") ||
         config.wsUrl ||
-        "ws://localhost:8000/api/ais/subscribe";
+        defaultWsUrl;
 
       // Normalizace WebSocket URL
       if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
