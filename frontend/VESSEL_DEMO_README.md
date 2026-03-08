@@ -66,7 +66,7 @@ npm install
 npm run dev
 ```
 
-The app will open at `http://localhost:5173/vessel-demo`
+The app will open at `http://localhost:5173/track`
 
 ### Configuration
 
@@ -75,7 +75,7 @@ The app tries to connect to `ws://localhost:8000/api/ais/subscribe` by default.
 
 **Override via query parameter:**
 ```
-http://localhost:5173/vessel-demo?ws=ws://your-server:8000/api/ais/subscribe&mmsi=211378120
+http://localhost:5173/track?ws=ws://your-server:8000/api/ais/subscribe&mmsi=211378120
 ```
 
 #### Build for Production
@@ -87,7 +87,7 @@ npm run build
 
 ### Tracking a Vessel
 
-1. Navigate to `/vessel-demo` (or click "Vessel Demo" in the sidebar)
+1. Navigate to `/track` (or click "Vessel Tracker" in the sidebar)
 2. Enter a vessel **MMSI** in the text input
 3. Click **Track** or press Enter
 4. The map will center on the vessel (if auto-pan is on)
@@ -291,7 +291,7 @@ frontend/
 
 3. **Update WebSocket URL** via environment variable or query parameter:
    ```bash
-   http://your-domain/vessel-demo?ws=wss://your-api:8000/api/ais/subscribe
+   http://your-domain/track?ws=wss://your-api:8000/api/ais/subscribe
    ```
 
 ## Limitations & Notes

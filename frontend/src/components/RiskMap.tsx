@@ -952,8 +952,8 @@ export const GlobalRiskMap = memo(function GlobalRiskMap({ height = 420 }: { hei
                 worldCopyJump
             >
                 <TileLayer
-                    url="https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'
+                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    attribution="&copy; CartoDB"
                 />
 
                 {/* Danger Zones (Rendered with multiple horizontal copies so panning across Date Line keeps them alive) */}
@@ -1057,8 +1057,8 @@ export const AviationRiskMap = memo(function AviationRiskMap({
             >
                 <FitBounds positions={pathCoords} />
                 <TileLayer
-                    url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'
+                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                    attribution="&copy; CartoDB"
                 />
 
                 {/* Danger zones (translucent + wrapped) */}
@@ -1154,8 +1154,8 @@ export const MaritimeRiskMap = memo(function MaritimeRiskMap({
             >
                 <FitBounds positions={[oCoords, dCoords]} />
                 <TileLayer
-                    url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'
+                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                    attribution="&copy; CartoDB"
                 />
 
                 {/* Maritime danger zones (wrapped) */}
@@ -1249,8 +1249,8 @@ export const RailwayRiskMap = memo(function RailwayRiskMap({
             >
                 <FitBounds positions={allPositions} />
                 <TileLayer
-                    url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'
+                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                    attribution="&copy; CartoDB"
                 />
 
                 {/* Rail danger / risk zones */}

@@ -32,6 +32,9 @@ Recommended Platform: **Vercel** or **Netlify**
     - `VITE_API_URL`: The **full URL** of your deployed backend (e.g., `https://your-backend.onrender.com`).
     - *Important: Do NOT include a trailing slash.*
 
+### 2.1 SPA Routing
+I have included a `vercel.json` in the `frontend` directory. This ensures that direct navigation to routes like `/track` works correctly without showing a 404 error.
+
 ---
 
 ## 3. Post-Deployment Verification
