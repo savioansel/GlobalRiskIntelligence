@@ -76,8 +76,66 @@ async def analyze_maritime(req: MaritimeRequest):
     dim_colors = ["#3b82f6", "#ef4444", "#f97316", "#8b5cf6", "#10b981"]
     dim_keys = list(dims_raw.keys())
 
-    # Derive overall score as weighted sum of dimensions (production-grade)
-    overall = round(sum(dims_raw[dim_keys[i]] * dim_weights[i] for i in range(len(dim_keys))), 1)
+    import joblib
+    import pandas as pd
+    
+    # 1. Isolation Forest - Anomaly Dimension Generation
+    try:
+        ifo_path = os.path.join(os.path.dirname(__file__), "..", "models", "maritime_iforest.pkl")
+        if os.path.exists(ifo_path):
+            iso_forest = joblib.load(ifo_path)
+            
+            # Generate current route telemetry (simulated)
+            # Speed (knots), Course Deviation (deg), Draft (m), Rate of Turn (deg/min)
+            current_telemetry = pd.DataFrame([{
+                "Speed": rng.uniform(5, 22),
+                "Course_Dev": rng.uniform(-40, 40),
+                "Draft": rng.uniform(8, 15),
+                "Rate_of_Turn": rng.uniform(-10, 10)
+            }])
+            
+            # -1 for anomaly, 1 for normal
+            anomaly_pred = iso_forest.predict(current_telemetry)[0]
+            # distance from decision boundary (negative = anomaly)
+            anomaly_score_raw = iso_forest.decision_function(current_telemetry)[0]
+            
+            # Map the raw score to a 0-100 risk dimension
+            # Typically decision_function is between -0.5 and 0.5. 
+            # Lower means more anomalous -> Higher Risk (closer to 100)
+            # 0.0 is the boundary. 0.1 is very normal (low risk), -0.1 is very anomalous (high risk)
+            
+            # Baseline is 50. Increase risk as score goes negative. Decrease as it goes positive.
+            normalized_anomaly_risk = 50 - (anomaly_score_raw * 250)
+            normalized_anomaly_risk = float(max(10, min(100, normalized_anomaly_risk)))
+            
+            # Force higher risk if it explicitly predicted -1
+            if anomaly_pred == -1:
+                normalized_anomaly_risk = max(75.0, normalized_anomaly_risk)
+                
+            # Overwrite the vessel behavior dimension with the real anomaly score
+            dims_raw["AIS / Vessel Behavior"] = normalized_anomaly_risk
+            print(f"[Maritime Isolation Forest] Anomaly Score: {normalized_anomaly_risk:.1f} (Raw: {anomaly_score_raw:.3f})")
+    except Exception as e:
+        print(f"Isolation Forest Error (Maritime): {e}")
+
+    # 2. Derive overall score using ML Ensemble if available, otherwise fallback
+    try:
+        model_path = os.path.join(os.path.dirname(__file__), "..", "models", "maritime_ensemble.pkl")
+        if os.path.exists(model_path):
+            ensemble_model = joblib.load(model_path)
+            
+            # Prepare feature vector matching the training script order
+            feature_names = ["Weather / Sea State", "Geopolitical / Piracy", "AIS / Vessel Behavior", "Route Chokepoints", "Port Congestion"]
+            features = {k: [dims_raw.get(k, 50.0)] for k in feature_names}
+            df_features = pd.DataFrame(features)
+            
+            overall = float(ensemble_model.predict(df_features)[0])
+            overall = round(max(0, min(100, overall)), 1)
+        else:
+            overall = round(sum(dims_raw[dim_keys[i]] * dim_weights[i] for i in range(len(dim_keys))), 1)
+    except Exception as e:
+        print(f"ML Model Error: {e}")
+        overall = round(sum(dims_raw[dim_keys[i]] * dim_weights[i] for i in range(len(dim_keys))), 1)
 
     if req.route_preference == "safest":
         dims_raw = {k: v * 0.65 for k, v in dims_raw.items()}
