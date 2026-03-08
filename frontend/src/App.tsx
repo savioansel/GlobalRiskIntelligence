@@ -21,7 +21,6 @@ const NAV = [
   { to: "/portfolio", icon: "business_center", label: "Portfolio" },
   { to: "/ai", icon: "smart_toy", label: "AI Center" },
   { to: "/live-tracking", icon: "radar", label: "Live Tracking" },
-  { to: "/track", icon: "track_changes", label: "Vessel Tracker" },
 ];
 
 function Sidebar() {
