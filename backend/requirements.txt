@@ -24,6 +24,11 @@ python-multipart>=0.0.5
 # AI/ML Integration & Routing
 google-generativeai>=0.7.0
 searoute>=1.4.3
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+joblib>=1.3.0
+catboost>=1.2.0
 
 # ========================================
 # DEVELOPMENT DEPENDENCIES

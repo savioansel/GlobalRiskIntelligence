@@ -202,7 +202,7 @@ async def run_demo(api_url: str):
                         # After time jump, move normally
                         v.advance(tick_dt)
                     elif not getattr(v, 'entered_zone', False):
-                        if v.lon >= 95.0 and not getattr(v, 'toggled_zone', False):
+                        if v.lon >= 92.4 and not getattr(v, 'toggled_zone', False):
                             try:
                                 await client.post(f"{api_url}/api/ais/zones/toggle?zone_name=Strait of Malacca")
                                 v.toggled_zone = True

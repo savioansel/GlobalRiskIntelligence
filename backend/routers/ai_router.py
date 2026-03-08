@@ -221,6 +221,17 @@ def ai_simulate_scenario(req: ScenarioRequest):
             text = data["choices"][0]["message"]["content"]
             try:
                 result = json.loads(text)
+                
+                # The LLM often hallucinates the overall_risk_score based on the prompt example (75 or 80)
+                # Ensure the overall score perfectly matches the generated risk breakdown.
+                if "risk_breakdown" in result and isinstance(result["risk_breakdown"], dict):
+                    breakdown = result["risk_breakdown"]
+                    # Average all the numeric values in the breakdown
+                    scores = [float(v) for v in breakdown.values() if isinstance(v, (int, float))]
+                    if scores:
+                        true_overall = round(sum(scores) / len(scores), 1)
+                        result["overall_risk_score"] = true_overall
+                
                 return ScenarioResponse(**result)
             except json.JSONDecodeError:
                 # Fallback to returning the raw text if JSON is malformed
